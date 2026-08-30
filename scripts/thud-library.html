@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sotto — thud library</title>
+<style>
+  :root { --orange: #ff9f1c; --gold: #ffcc59; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "SF Pro Rounded", BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+    background:
+      radial-gradient(1100px 600px at 15% 0%, #1d2440 0%, transparent 60%),
+      radial-gradient(900px 700px at 85% 30%, #33203c 0%, transparent 55%),
+      #0e0e14;
+    color: #fff; padding: 28px 320px 80px 40px;
+  }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .sub { font-size: 12px; color: rgba(255,255,255,.45); margin-bottom: 22px; }
+  h2 {
+    font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--gold); margin: 22px 0 10px;
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .thud {
+    padding: 12px 12px 10px; border-radius: 12px; cursor: pointer; user-select: none;
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09);
+    transition: transform .08s, background .12s, border-color .12s;
+  }
+  .thud:hover { background: rgba(255,255,255,.09); }
+  .thud:active { transform: scale(.96); background: rgba(255,159,28,.18); border-color: var(--orange); }
+  .thud .name { font-size: 13px; font-weight: 700; }
+  .thud .hint { font-size: 10.5px; color: rgba(255,255,255,.4); margin-top: 3px; line-height: 1.35; }
+  .thud .cuebtns { display: flex; gap: 4px; margin-top: 9px; }
+  .thud .cuebtns button {
+    flex: 1; padding: 3px 0; font-size: 9.5px; font-weight: 800; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.12); border-radius: 6px;
+    background: rgba(255,255,255,.04); color: rgba(255,255,255,.5);
+  }
+  .thud .cuebtns button.set { background: var(--orange); color: #14140f; border-color: var(--orange); }
+  .thud .cuebtns button:hover { border-color: var(--gold); color: var(--gold); }
+  .thud .cuebtns button.set:hover { color: #14140f; }
+
+  .panel {
+    position: fixed; top: 28px; right: 28px; width: 262px;
+    background: rgba(16,16,22,.94); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 14px; padding: 16px; font-size: 12px; z-index: 20;
+  }
+  .panel h3 { font-size: 12px; color: var(--gold); margin: 12px 0 6px; }
+  .panel h3:first-child { margin-top: 0; }
+  .panel .row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+  .panel label { flex: 0 0 64px; color: rgba(255,255,255,.6); }
+  .panel input[type=range] { flex: 1; accent-color: var(--orange); }
+  .panel output { width: 34px; text-align: right; color: rgba(255,255,255,.8); }
+  .panel .cue { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+  .panel .cue b { flex: 0 0 52px; font-size: 10.5px; letter-spacing: .5px; color: rgba(255,255,255,.55); }
+  .panel .cue span { flex: 1; font-size: 11.5px; color: var(--gold); }
+  .panel .cue button {
+    padding: 2px 7px; font-size: 10px; border: 0; border-radius: 5px; cursor: pointer;
+    background: rgba(255,255,255,.1); color: #fff;
+  }
+  .panel > button {
+    width: 100%; margin-top: 10px; padding: 9px; border: 0; border-radius: 9px;
+    font-weight: 800; font-size: 12.5px; cursor: pointer;
+  }
+  #seq { background: var(--orange); color: #14140f; }
+  #export { background: rgba(255,255,255,.12); color: #fff; }
+  .note { color: rgba(255,255,255,.4); margin-top: 10px; line-height: 1.45; font-size: 11px; }
+  #copied { color: var(--gold); font-size: 11px; margin-top: 6px; text-align: center; opacity: 0; transition: opacity .2s; }
+</style>
+</head>
+<body>
+  <h1>Thud Library</h1>
+  <div class="sub">Click a card to feel it. Assign any thud to a cinematic cue (A=ack · M=merge · C=charge · L=launch · V=arrive). Everything through the soft ceiling — no piercing highs, ever.</div>
+  <div id="families"></div>
+
+  <div class="panel">
+    <h3>FEEL</h3>
+    <div class="row"><label>Pitch ×</label><input type="range" id="pitch" min=".5" max="1.6" step=".05" value="1"><output id="pitchO">1</output></div>
+    <div class="row"><label>Decay ×</label><input type="range" id="decay" min=".5" max="2.2" step=".1" value="1"><output id="decayO">1</output></div>
+    <div class="row"><label>Knock ×</label><input type="range" id="knock" min="0" max="2" step=".1" value="1"><output id="knockO">1</output></div>
+    <div class="row"><label>Volume</label><input type="range" id="vol" min="0" max="2" step=".05" value="1"><output id="volO">1</output></div>
+    <h3>CINEMATIC CUES</h3>
+    <div id="cueList"></div>
+    <button id="seq">▶ Play full sequence</button>
+    <button id="export">Copy Swift for chosen cues</button>
+    <div id="copied">copied</div>
+    <div class="note">Sequence plays ack → merge → charge → launch → arrive with real cinematic timing. Export copies exact SoundPlayer Voice arrays — sliders baked in.</div>
+  </div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  for (const id of ["pitch","decay","knock","vol"]) $(id).addEventListener("input", () => $(id+"O").textContent = $(id).value);
+
+  let actx, master, ceiling;
+  function AC() {
+    if (!actx) {
+      actx = new AudioContext();
+      ceiling = actx.createBiquadFilter();
+      ceiling.type = "lowpass"; ceiling.Q.value = 0.5; ceiling.frequency.value = 2000;
+      master = actx.createGain();
+      master.connect(ceiling); ceiling.connect(actx.destination);
+    }
+    master.gain.value = parseFloat($("vol").value);
+    return actx;
+  }
+
+  // layer: shape sine|triangle|sawtooth|noise; for noise f0→f1 = filter sweep
+  function playLayer(l, mods) {
+    const t0 = AC().currentTime + (l.delay || 0);
+    const dur = l.dur * mods.decay;
+    const g = AC().createGain();
+    const attack = l.attack ?? 0.003;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(l.gain, t0 + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    const f = AC().createBiquadFilter();
+    f.type = "lowpass"; f.Q.value = 0.5;
+    if (l.shape === "noise") {
+      const n = AC().createBufferSource();
+      const buf = AC().createBuffer(1, Math.ceil(AC().sampleRate * dur), AC().sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      n.buffer = buf;
+      f.frequency.setValueAtTime(l.f0 * mods.pitch, t0);
+      f.frequency.exponentialRampToValueAtTime(Math.max(40, (l.f1 || l.f0) * mods.pitch), t0 + dur);
+      n.connect(f); f.connect(g); g.connect(master);
+      n.start(t0);
+    } else {
+      f.frequency.value = l.lp ?? 2200;
+      const o = AC().createOscillator();
+      o.type = l.shape || "sine";
+      o.frequency.setValueAtTime(l.f0 * mods.pitch, t0);
+      if (l.f1 && l.f1 !== l.f0) o.frequency.exponentialRampToValueAtTime(l.f1 * mods.pitch, t0 + dur);
+      o.connect(f); f.connect(g); g.connect(master);
+      o.start(t0); o.stop(t0 + dur + 0.03);
+    }
+  }
+  function mods() {
+    return { pitch: parseFloat($("pitch").value), decay: parseFloat($("decay").value), knock: parseFloat($("knock").value) };
+  }
+  function play(thud) {
+    const m = mods();
+    for (const l of thud.layers) {
+      if (l.knockLayer && m.knock === 0) continue;
+      const layer = { ...l };
+      if (l.knockLayer) layer.gain = l.gain * m.knock;
+      if (layer.gain > 0.0002) playLayer(layer, m);
+    }
+  }
+
+  const K = g => ({ shape: "noise", f0: 460, f1: 190, dur: .04, gain: g, attack: .002, knockLayer: true });
+
+  // Nearest equal-tempered note for a frequency, with cents offset when >20.
+  const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  function noteName(f) {
+    const n = Math.round(12 * Math.log2(f / 440)) + 57; // 57 = A4's index from C0
+    const cents = Math.round(1200 * Math.log2(f / (440 * 2 ** ((n - 57) / 12))));
+    const base = NOTE_NAMES[((n % 12) + 12) % 12] + Math.floor(n / 12);
+    return Math.abs(cents) > 20 ? base + (cents > 0 ? "+" : "") + cents + "¢" : base;
+  }
+  const noteLine = t => t.layers
+    .filter(l => l.shape !== "noise" && !l.knockLayer)
+    .map(l => l.f1 && l.f1 !== l.f0 ? `${noteName(l.f0)}→${noteName(l.f1)}` : noteName(l.f0))
+    .join(" · ");
+
+  const FAMILIES = [
+    ["CHARGE — energy, not beats (rises that crescendo into the launch)", [
+      { id: "low-swell", name: "Low Swell", hint: "sub rising from the floor", layers: [{ f0: 46, f1: 88, dur: .55, gain: .34, lp: 240, attack: .2 }] },
+      { id: "low-swell-f", name: "Low Swell F", hint: "the god-tier one, tuned exactly F1→F2", layers: [{ f0: 43.65, f1: 87.3, dur: .55, gain: .34, lp: 240, attack: .2 }] },
+      { id: "rising-hum", name: "Rising Hum", hint: "two detuned hums beating upward", layers: [{ shape: "triangle", f0: 78, f1: 150, dur: .55, gain: .17, lp: 420, attack: .22 }, { shape: "triangle", f0: 80, f1: 155, dur: .55, gain: .17, lp: 420, attack: .22 }] },
+      { id: "reactor", name: "Reactor", hint: "spooling up — air over sub", layers: [{ f0: 55, f1: 70, dur: .55, gain: .3, lp: 200, attack: .25 }, { shape: "noise", f0: 150, f1: 700, dur: .55, gain: .16, attack: .3 }] },
+      { id: "coil-wind", name: "Coil Wind", hint: "winding tighter and tighter", layers: [{ shape: "sawtooth", f0: 55, f1: 175, dur: .55, gain: .14, lp: 380, attack: .24 }] },
+      { id: "breath-draw", name: "Breath Draw", hint: "the inhale before the leap", layers: [{ shape: "noise", f0: 200, f1: 900, dur: .55, gain: .22, attack: .35 }] },
+      { id: "harmonic-rise", name: "Harmonic Rise", hint: "warm chord climbing", layers: [{ f0: 65, f1: 98, dur: .55, gain: .2, lp: 300, attack: .2 }, { f0: 130, f1: 196, dur: .55, gain: .12, lp: 500, attack: .22 }, { f0: 195, f1: 294, dur: .5, gain: .07, lp: 600, attack: .24 }] },
+      { id: "tremor-roll", name: "Tremor Roll", hint: "gathering rumble, accelerating", layers: [0, .14, .25, .34, .41, .47].map((d, i) => ({ f0: 52, f1: 44, dur: .09, gain: .12 + i * .05, lp: 200, attack: .004, delay: d })) },
+    ]],
+    ["ARRIVE — transfer, tuned to F (the key ack/merge/charge already sing in)", [
+      { id: "beam-in-f", name: "Beam In F", hint: "the beam, resolved: C5 falls to F2", layers: [{ f0: 523, f1: 87.3, dur: .14, gain: .3, lp: 1600, attack: .004 }, { f0: 43.65, dur: .1, gain: .18, lp: 200, attack: .002, delay: .1 }] },
+      { id: "materialize-f", name: "Materialize F", hint: "F-C-F cascade snapping home", layers: [{ f0: 349, f1: 175, dur: .06, gain: .16, lp: 1500, attack: .003 }, { f0: 262, f1: 131, dur: .07, gain: .18, lp: 1200, attack: .003, delay: .035 }, { f0: 175, f1: 87.3, dur: .1, gain: .22, lp: 900, attack: .003, delay: .07 }] },
+      { id: "data-splash-f", name: "Data Splash F", hint: "air ring + F2→F1 settle", layers: [{ shape: "noise", f0: 1800, f1: 200, dur: .13, gain: .22, attack: .004 }, { f0: 87.3, f1: 43.65, dur: .12, gain: .3, lp: 300, attack: .003, delay: .02 }] },
+      { id: "zip-down-f", name: "Zip Down F", hint: "electric zip C5→F2", layers: [{ shape: "sawtooth", f0: 523, f1: 87.3, dur: .11, gain: .12, lp: 800, attack: .003 }, { f0: 87.3, dur: .08, gain: .2, lp: 250, attack: .002, delay: .08 }] },
+      { id: "condense-f", name: "Condense F", hint: "F3 lifts to F4, F2 tick", layers: [{ f0: 175, f1: 349, dur: .07, gain: .2, lp: 1200, attack: .06 }, { f0: 87.3, f1: 43.65, dur: .06, gain: .4, lp: 350, attack: .001, delay: .075 }] },
+      { id: "glide-done-f", name: "Glide Done F", hint: "C4→F3 then F3→C3, pure cadence", layers: [{ f0: 262, f1: 175, dur: .12, gain: .14, lp: 1500, attack: .006 }, { f0: 175, f1: 131, dur: .14, gain: .18, lp: 1200, attack: .006, delay: .02 }] },
+    ]],
+    ["SUB — pure felt drops", [
+      { id: "velvet", name: "Velvet", hint: "the current default ack", layers: [{ f0: 95, f1: 50, dur: .12, gain: .55, lp: 300, attack: .002 }, K(.06)] },
+      { id: "deep-drop", name: "Deep Drop", hint: "lower, rounder, longer", layers: [{ f0: 70, f1: 38, dur: .16, gain: .55, lp: 280, attack: .002 }] },
+      { id: "feather", name: "Feather", hint: "barely there", layers: [{ f0: 60, f1: 42, dur: .09, gain: .3, lp: 240, attack: .002 }] },
+      { id: "floor", name: "Floor", hint: "slow settle into the ground", layers: [{ f0: 50, f1: 32, dur: .2, gain: .6, lp: 200, attack: .004 }] },
+      { id: "velvet-double", name: "Velvet Double", hint: "dut-dut", layers: [{ f0: 95, f1: 50, dur: .12, gain: .5, lp: 300, attack: .002 }, { f0: 78, f1: 44, dur: .12, gain: .36, lp: 300, attack: .002, delay: .1 }] },
+    ]],
+    ["KNOCK — contact you can hear", [
+      { id: "knuckle", name: "Knuckle", hint: "knock on your desk", layers: [{ f0: 85, f1: 48, dur: .09, gain: .4, lp: 320, attack: .002 }, { shape: "noise", f0: 520, f1: 210, dur: .05, gain: .16, attack: .002, knockLayer: true }] },
+      { id: "door", name: "Door", hint: "heavy, hollow", layers: [{ f0: 45, f1: 30, dur: .18, gain: .6, lp: 220, attack: .003 }, { shape: "noise", f0: 300, f1: 120, dur: .06, gain: .2, attack: .002, knockLayer: true }] },
+      { id: "mallet", name: "Mallet", hint: "soft head, firm hit", layers: [{ f0: 110, f1: 60, dur: .1, gain: .42, lp: 380, attack: .002 }, K(.05)] },
+      { id: "double-knock", name: "Double Knock", hint: "knock-knock", layers: [{ f0: 85, f1: 50, dur: .08, gain: .4, lp: 320, attack: .002 }, { shape: "noise", f0: 500, f1: 220, dur: .04, gain: .12, attack: .002, knockLayer: true }, { f0: 80, f1: 47, dur: .08, gain: .34, lp: 320, attack: .002, delay: .11 }, { shape: "noise", f0: 480, f1: 210, dur: .04, gain: .1, attack: .002, delay: .11, knockLayer: true }] },
+    ]],
+    ["DRUM — musical weight", [
+      { id: "kick", name: "Kick", hint: "tight club kick", layers: [{ f0: 120, f1: 45, dur: .12, gain: .6, lp: 400, attack: .001 }] },
+      { id: "taiko", name: "Taiko", hint: "big room, big skin", layers: [{ f0: 90, f1: 50, dur: .25, gain: .6, lp: 350, attack: .002 }, { shape: "noise", f0: 260, f1: 110, dur: .09, gain: .18, attack: .002, knockLayer: true }] },
+      { id: "floor-tom", name: "Floor Tom", hint: "round and woody", layers: [{ f0: 80, f1: 55, dur: .3, gain: .5, lp: 320, attack: .002 }] },
+      { id: "eight-oh-eight", name: "808", hint: "long sub tail", layers: [{ f0: 55, f1: 40, dur: .35, gain: .55, lp: 200, attack: .002 }] },
+    ]],
+    ["WOOD — warm and dry", [
+      { id: "wood-bar", name: "Wood Bar", hint: "single marimba bar", layers: [{ f0: 175, dur: .16, gain: .3, lp: 800, attack: .002 }, { f0: 350, dur: .05, gain: .07, lp: 800, attack: .002 }] },
+      { id: "marimba-low", name: "Marimba Low", hint: "deeper bar, more ring", layers: [{ f0: 147, dur: .22, gain: .32, lp: 700, attack: .002 }, { f0: 294, dur: .07, gain: .07, lp: 800, attack: .002 }] },
+      { id: "log-drum", name: "Log Drum", hint: "hollow trunk", layers: [{ f0: 98, dur: .2, gain: .38, lp: 500, attack: .002 }, { f0: 196, dur: .06, gain: .08, lp: 600, attack: .002 }] },
+      { id: "claves-low", name: "Claves Low", hint: "dry tick with body", layers: [{ f0: 330, dur: .06, gain: .18, lp: 850, attack: .001 }, { f0: 82, f1: 55, dur: .07, gain: .25, lp: 300, attack: .002 }] },
+    ]],
+    ["FELT — softest touch", [
+      { id: "felt-piano", name: "Felt Piano", hint: "muted low key", layers: [{ f0: 131, dur: .25, gain: .26, lp: 600, attack: .003 }, { f0: 262, dur: .1, gain: .06, lp: 600, attack: .003 }] },
+      { id: "felt-low", name: "Felt Low", hint: "lower key, slower", layers: [{ f0: 87, dur: .3, gain: .3, lp: 450, attack: .004 }, { f0: 174, dur: .12, gain: .06, lp: 500, attack: .004 }] },
+      { id: "carpet-step", name: "Carpet Step", hint: "footstep on carpet", layers: [{ shape: "noise", f0: 400, f1: 150, dur: .12, gain: .22, attack: .008 }, { f0: 65, f1: 45, dur: .12, gain: .3, lp: 240, attack: .004 }] },
+      { id: "book-close", name: "Book Close", hint: "soft cover thump", layers: [{ shape: "noise", f0: 350, f1: 140, dur: .08, gain: .2, attack: .003 }, { f0: 55, f1: 38, dur: .12, gain: .4, lp: 220, attack: .002 }] },
+    ]],
+    ["BODY — felt in the chest", [
+      { id: "chest", name: "Chest", hint: "the one you feel", layers: [{ f0: 58, f1: 36, dur: .22, gain: .7, lp: 200, attack: .002 }] },
+      { id: "heart-lub", name: "Heart Lub", hint: "single heartbeat", layers: [{ f0: 62, f1: 44, dur: .1, gain: .5, lp: 220, attack: .002 }] },
+      { id: "lub-dub", name: "Lub-Dub", hint: "full heartbeat pair", layers: [{ f0: 62, f1: 44, dur: .1, gain: .5, lp: 220, attack: .002 }, { f0: 54, f1: 40, dur: .1, gain: .34, lp: 220, attack: .002, delay: .15 }] },
+      { id: "distant-boom", name: "Distant Boom", hint: "thunder two rooms away", layers: [{ f0: 40, f1: 30, dur: .4, gain: .6, lp: 150, attack: .01 }] },
+    ]],
+    ["TEXTURE — playful contact", [
+      { id: "rubber", name: "Rubber", hint: "bouncy, elastic", layers: [{ shape: "triangle", f0: 140, f1: 70, dur: .08, gain: .3, lp: 500, attack: .002 }] },
+      { id: "cork-pop", name: "Cork Pop", hint: "tiny pop, zero squeak", layers: [{ f0: 180, f1: 90, dur: .05, gain: .3, lp: 600, attack: .001 }, K(.04)] },
+      { id: "water-drop", name: "Water Drop", hint: "deep droplet", layers: [{ f0: 220, f1: 90, dur: .09, gain: .22, lp: 650, attack: .002 }] },
+      { id: "pillow", name: "Pillow", hint: "air escaping softly", layers: [{ shape: "noise", f0: 300, f1: 120, dur: .14, gain: .26, attack: .01 }, { f0: 60, f1: 44, dur: .1, gain: .22, lp: 220, attack: .004 }] },
+    ]],
+  ];
+
+  const ALL = {};
+  FAMILIES.forEach(([, thuds]) => thuds.forEach(t => ALL[t.id] = t));
+
+  const CUES = [
+    { key: "ack", label: "ACK", short: "A" },
+    { key: "merge", label: "MERGE", short: "M" },
+    { key: "charge", label: "CHARGE", short: "C" },
+    { key: "launch", label: "LAUNCH", short: "L" },
+    { key: "arrive", label: "ARRIVE", short: "V" },
+  ];
+  // Certified picks (2026-08-29): Wood Bar in, Felt Piano on merge, Low Swell
+  // charge certified god-tier. Arrive retuned into F; Beam In F preset.
+  const assign = { ack: "wood-bar", merge: "felt-piano", charge: "low-swell", launch: null, arrive: "beam-in-f" };
+
+  function renderCues() {
+    $("cueList").innerHTML = "";
+    for (const cue of CUES) {
+      const row = document.createElement("div");
+      row.className = "cue";
+      const name = assign[cue.key] ? ALL[assign[cue.key]].name : "(keep pack sound)";
+      row.innerHTML = `<b>${cue.label}</b><span>${name}</span>`;
+      const btn = document.createElement("button");
+      btn.textContent = "✕";
+      btn.onclick = () => { assign[cue.key] = null; renderAll(); };
+      row.appendChild(btn);
+      $("cueList").appendChild(row);
+    }
+  }
+  function renderAll() {
+    renderCues();
+    document.querySelectorAll(".thud").forEach(card => {
+      card.querySelectorAll(".cuebtns button").forEach((b, i) => {
+        b.classList.toggle("set", assign[CUES[i].key] === card.dataset.id);
+      });
+    });
+  }
+
+  const familiesBox = $("families");
+  for (const [title, thuds] of FAMILIES) {
+    const h = document.createElement("h2");
+    h.textContent = title;
+    familiesBox.appendChild(h);
+    const grid = document.createElement("div");
+    grid.className = "grid";
+    for (const t of thuds) {
+      const card = document.createElement("div");
+      card.className = "thud"; card.dataset.id = t.id;
+      card.innerHTML = `<div class="name">${t.name}</div><div class="hint">${t.hint}</div><div class="hint" style="color:var(--gold);letter-spacing:.04em">${noteLine(t)}</div>`;
+      const cuebtns = document.createElement("div");
+      cuebtns.className = "cuebtns";
+      for (const cue of CUES) {
+        const b = document.createElement("button");
+        b.textContent = cue.short;
+        b.title = "assign to " + cue.label;
+        b.onclick = e => { e.stopPropagation(); assign[cue.key] = t.id; renderAll(); play(t); };
+        cuebtns.appendChild(b);
+      }
+      card.appendChild(cuebtns);
+      card.onclick = () => play(t);
+      grid.appendChild(card);
+    }
+    familiesBox.appendChild(grid);
+  }
+  renderAll();
+
+  $("seq").onclick = () => {
+    // real cinematic timing: ack, [2s of imagined talking], merge, orb 720ms,
+    // charge 520ms, launch (670ms flight), arrive
+    const at = (key, ms) => setTimeout(() => { if (assign[key]) play(ALL[assign[key]]); }, ms);
+    at("ack", 0);
+    at("merge", 900);
+    at("charge", 1620);
+    at("launch", 2140);
+    at("arrive", 2810);
+  };
+
+  $("export").onclick = async () => {
+    const m = mods();
+    const shapeMap = { sine: ".sine", triangle: ".triangle", sawtooth: ".sawtooth", noise: ".noise" };
+    let out = "// Thud library export — paste into SoundPlayer.voices(pack:cue:)\n";
+    out += `// sliders baked in: pitch x${m.pitch}, decay x${m.decay}, knock x${m.knock}\n`;
+    for (const cue of CUES) {
+      if (!assign[cue.key]) { out += `// ${cue.key}: keep current pack sound\n`; continue; }
+      const t = ALL[assign[cue.key]];
+      out += `// ${cue.key}: ${t.name}\ncase (.custom, .${cue.key === "arrive" ? "arrive" : cue.key}):\n    return [\n`;
+      for (const l of t.layers) {
+        const gain = l.knockLayer ? l.gain * m.knock : l.gain;
+        if (gain <= 0.0002) continue;
+        const f0 = (l.f0 * m.pitch).toFixed(0);
+        const f1 = l.f1 ? (l.f1 * m.pitch).toFixed(0) : 0;
+        const dur = (l.dur * m.decay).toFixed(3);
+        const parts = [`shape: ${shapeMap[l.shape || "sine"]}`, `f0: ${f0}`];
+        if (f1 > 0) parts.push(`f1: ${f1}`);
+        parts.push(`dur: ${dur}`, `gain: ${gain.toFixed(2)}`);
+        if (l.delay) parts.push(`delay: ${l.delay}`);
+        if (l.lp && (l.shape || "sine") !== "noise") parts.push(`lp: ${l.lp}`);
+        parts.push(`attack: ${l.attack ?? 0.003}`);
+        out += `        Voice(${parts.join(", ")}),\n`;
+      }
+      out += "    ]\n";
+    }
+    await navigator.clipboard.writeText(out);
+    $("copied").style.opacity = 1;
+    setTimeout(() => $("copied").style.opacity = 0, 1200);
+  };
+</script>
+</body>
+</html>

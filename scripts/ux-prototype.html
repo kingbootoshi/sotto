@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sotto — full UX prototype</title>
+<style>
+  :root { --orange: #ff9f1c; --gold: #ffcc59; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "SF Pro Rounded", BlinkMacSystemFont, sans-serif;
+    height: 100vh; overflow: hidden;
+    background:
+      radial-gradient(1100px 600px at 15% 0%, #1d2440 0%, transparent 60%),
+      radial-gradient(900px 700px at 85% 30%, #33203c 0%, transparent 55%),
+      #0e0e14;
+    color: #fff;
+  }
+
+  /* ---- mock document where the beam lands ---- */
+  .doc {
+    position: absolute; inset: 60px 340px 140px 60px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 14px; padding: 34px 38px;
+    font-size: 16px; line-height: 1.7; color: rgba(255,255,255,.75);
+  }
+  .doc h3 { font-size: 13px; letter-spacing: 1px; color: rgba(255,255,255,.35); margin-bottom: 14px; }
+  #typed { color: var(--gold); }
+  .caret {
+    display: inline-block; width: 2px; height: 1.15em; background: var(--gold);
+    vertical-align: text-bottom; animation: blink 1.1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---- control panel ---- */
+  .panel {
+    position: absolute; top: 60px; right: 40px; width: 264px;
+    background: rgba(16,16,22,.9); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 14px; padding: 16px; font-size: 12px;
+  }
+  .panel h3 { font-size: 12px; color: var(--gold); margin: 10px 0 6px; }
+  .panel h3:first-child { margin-top: 0; }
+  .panel .row { display: flex; align-items: center; gap: 8px; margin: 5px 0; }
+  .panel label { flex: 0 0 92px; color: rgba(255,255,255,.6); }
+  .panel input[type=range] { flex: 1; accent-color: var(--orange); }
+  .panel output { width: 40px; text-align: right; color: rgba(255,255,255,.8); }
+  .panel .hint { color: rgba(255,255,255,.4); margin-top: 10px; line-height: 1.5; }
+  .panel button {
+    width: 100%; margin-top: 12px; padding: 9px; border: 0; border-radius: 9px;
+    background: var(--orange); color: #14140f; font-weight: 800; font-size: 13px;
+    cursor: pointer;
+  }
+  .panel .check { display: flex; gap: 6px; align-items: center; margin-top: 8px; color: rgba(255,255,255,.6); }
+
+  /* ---- the pill ---- */
+  #pill {
+    position: absolute; bottom: 72px; left: 50%;
+    transform: translateX(-50%) scale(.6); opacity: 0;
+    display: flex; align-items: center; gap: 11px;
+    padding: 11px 21px; min-height: 46px;
+    border-radius: 999px;
+    background: rgba(18,18,24,.55);
+    backdrop-filter: blur(28px) saturate(1.5);
+    -webkit-backdrop-filter: blur(28px) saturate(1.5);
+    box-shadow: 0 10px 30px rgba(0,0,0,.45);
+    font-size: 14px; font-weight: 600; color: rgba(255,255,255,.88);
+    transition: opacity .26s cubic-bezier(.2,1.4,.4,1), transform .26s cubic-bezier(.2,1.4,.4,1),
+                padding .32s cubic-bezier(.6,0,.3,1), min-height .32s, gap .32s;
+    white-space: nowrap;
+  }
+  #pill.on { opacity: 1; transform: translateX(-50%) scale(1); }
+  #pill.orb {
+    padding: 0; gap: 0; min-height: 0;
+    width: 42px; height: 42px;
+    background: radial-gradient(circle at 38% 32%, var(--gold), var(--orange) 55%, #b35c00);
+    box-shadow: 0 0 18px 4px rgba(255,159,28,.55), 0 0 60px 14px rgba(255,159,28,.25);
+    animation: orbPulse 1s ease-in-out infinite;
+  }
+  #pill.orb > * { display: none; }
+  #pill.pop { animation: orbPop .32s cubic-bezier(.2,1.6,.4,1) forwards; }
+  @keyframes orbPulse {
+    0%,100% { box-shadow: 0 0 14px 3px rgba(255,159,28,.45), 0 0 44px 10px rgba(255,159,28,.2); }
+    50% { box-shadow: 0 0 24px 7px rgba(255,159,28,.7), 0 0 80px 20px rgba(255,159,28,.32); }
+  }
+  @keyframes orbPop { to { transform: translateX(-50%) scale(.15); opacity: 0; } }
+  #pill svg.rim { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  #pill svg.rim rect { fill: none; stroke-linecap: round; }
+  #ptext.small { font-size: 13px; color: rgba(255,255,255,.75); }
+
+  /* scrolling waveform */
+  #wavebox { display: flex; align-items: center; gap: 2.5px; height: 26px; }
+  #wavebox i {
+    width: 3px; border-radius: 99px; flex: 0 0 3px;
+    background: linear-gradient(0deg, var(--orange), var(--gold));
+    transition: height .05s linear;
+  }
+  .dots { display: flex; gap: 5px; }
+  .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); animation: blinkd 1s ease-in-out infinite; }
+  .dots i:nth-child(2) { animation-delay: .18s; }
+  .dots i:nth-child(3) { animation-delay: .36s; }
+  @keyframes blinkd { 0%,100% { opacity: .25; transform: scale(.85); } 50% { opacity: 1; } }
+
+  /* ---- photon beam ---- */
+  #beam {
+    position: absolute; height: 2.5px; transform-origin: 0 50%;
+    background: linear-gradient(90deg, rgba(255,159,28,0), var(--gold), rgba(255,204,89,0));
+    filter: drop-shadow(0 0 6px var(--orange));
+    opacity: 0; pointer-events: none;
+  }
+  #photon {
+    position: absolute; width: 10px; height: 10px; border-radius: 50%;
+    background: radial-gradient(circle, #fff, var(--gold) 45%, var(--orange));
+    box-shadow: 0 0 12px 4px rgba(255,159,28,.8);
+    opacity: 0; pointer-events: none;
+  }
+  #impact {
+    position: absolute; width: 8px; height: 8px; border-radius: 50%;
+    border: 2px solid var(--gold); opacity: 0; pointer-events: none;
+  }
+  .impacting { animation: ring .45s ease-out forwards; }
+  @keyframes ring { from { transform: scale(.4); opacity: .95; } to { transform: scale(5); opacity: 0; } }
+</style>
+</head>
+<body>
+  <div class="doc">
+    <h3>MOCK DOCUMENT — the beam lands at the caret</h3>
+    <p>notes on the axia launch, dictated with sotto: <span id="typed"></span><span class="caret" id="caret"></span></p>
+  </div>
+
+  <div class="panel">
+    <h3>RUN</h3>
+    <button id="go">▶ Start dictation (or press Space)</button>
+    <div class="hint">Space = tap hotkey. Speak, then Space again to stop. Full flow: intro → listening → processing orb → photon transmit → typed text → exit.</div>
+    <div class="check"><input type="checkbox" id="sound" checked><label for="sound">acknowledgement + transmit sounds</label></div>
+
+    <h3>WAVE FEEL</h3>
+    <div class="row"><label>Gain</label><input type="range" id="gain" min="1" max="20" step=".5" value="7"><output id="gainO">7</output></div>
+    <div class="row"><label>Curve (soft→hard)</label><input type="range" id="curve" min=".3" max="1.6" step=".05" value=".75"><output id="curveO">.75</output></div>
+    <div class="row"><label>Auto-level</label><input type="range" id="agc" min="0" max="1" step=".05" value=".6"><output id="agcO">.6</output></div>
+    <div class="row"><label>Scroll speed</label><input type="range" id="scroll" min="1" max="6" step="1" value="2"><output id="scrollO">2</output></div>
+
+    <h3>MOTION</h3>
+    <div class="row"><label>Intro (ms)</label><input type="range" id="intro" min="120" max="700" step="10" value="260"><output id="introO">260</output></div>
+    <div class="row"><label>Orb morph (ms)</label><input type="range" id="morph" min="150" max="900" step="10" value="340"><output id="morphO">340</output></div>
+    <div class="row"><label>Beam (ms)</label><input type="range" id="beamT" min="150" max="1200" step="10" value="420"><output id="beamTO">420</output></div>
+    <div class="row"><label>Type speed</label><input type="range" id="typeT" min="4" max="40" step="1" value="14"><output id="typeTO">14</output></div>
+  </div>
+
+  <div id="pill">
+    <svg class="rim"></svg>
+    <span id="wavebox"></span>
+    <span class="dots" id="dots" style="display:none"><i></i><i></i><i></i></span>
+    <span id="ptext">Listening</span>
+  </div>
+  <div id="beam"></div>
+  <div id="photon"></div>
+  <div id="impact"></div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  for (const id of ["gain","curve","agc","scroll","intro","morph","beamT","typeT"])
+    $(id).addEventListener("input", () => $(id + "O").textContent = $(id).value);
+
+  // ---------- sounds: WebAudio stand-ins (ElevenLabs SFX in the real app) ----------
+  let actx;
+  function tone(freqs, dur, type = "sine", gain = 0.12) {
+    if (!$("sound").checked) return;
+    actx ??= new AudioContext();
+    const t0 = actx.currentTime;
+    const g = actx.createGain();
+    g.gain.setValueAtTime(gain, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    g.connect(actx.destination);
+    const o = actx.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(freqs[0], t0);
+    freqs.slice(1).forEach((f, i) => o.frequency.exponentialRampToValueAtTime(f, t0 + dur * (i + 1) / (freqs.length - 1)));
+    o.connect(g); o.start(t0); o.stop(t0 + dur);
+  }
+  const ackSound = () => { tone([520, 880, 1320], .16, "sine", .1); tone([260, 440], .12, "triangle", .06); };
+  const stopSound = () => tone([880, 620], .12, "sine", .08);
+  const transmitSound = () => { tone([1600, 300], .3, "sawtooth", .05); tone([2400, 900], .18, "sine", .07); };
+
+  // ---------- scrolling waveform ----------
+  const BARS = 26;
+  const wavebox = $("wavebox");
+  for (let i = 0; i < BARS; i++) wavebox.appendChild(document.createElement("i"));
+  const bars = [...wavebox.children];
+  let history = new Array(BARS).fill(0.04);
+
+  // ---------- twin snakes on the pill rim ----------
+  const rim = document.querySelector("#pill svg.rim");
+  let snakeLayers = [], snakeL = 0, snakeHead = 0;
+  function buildRim() {
+    rim.innerHTML = ""; snakeLayers = [];
+    const r = $("pill").getBoundingClientRect();
+    rim.setAttribute("viewBox", `0 0 ${r.width} ${r.height}`);
+    for (const [wdt, cls] of [[4, "glow"], [1.5, "line"]]) {
+      const el = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      const inset = 1.25;
+      el.setAttribute("x", inset); el.setAttribute("y", inset);
+      el.setAttribute("width", r.width - 2 * inset); el.setAttribute("height", r.height - 2 * inset);
+      el.setAttribute("rx", (r.height - 2 * inset) / 2);
+      el.setAttribute("stroke-width", wdt);
+      el.setAttribute("stroke", cls === "glow" ? "rgba(255,159,28,.5)" : "#ffb347");
+      if (cls === "glow") el.setAttribute("filter", "blur(3px)");
+      rim.appendChild(el); snakeLayers.push(el);
+    }
+    snakeL = snakeLayers[0].getTotalLength();
+  }
+
+  // ---------- mic ----------
+  let analyser, micData, peak = 0.08;
+  async function initMic() {
+    if (analyser) return true;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      actx ??= new AudioContext();
+      const src = actx.createMediaStreamSource(stream);
+      analyser = actx.createAnalyser();
+      analyser.fftSize = 1024;
+      src.connect(analyser);
+      micData = new Float32Array(analyser.fftSize);
+      return true;
+    } catch { return false; }
+  }
+  function micLevel() {
+    if (!analyser) return 0.1 + 0.5 * Math.abs(Math.sin(performance.now() / 180)); // demo fallback
+    analyser.getFloatTimeDomainData(micData);
+    let sum = 0;
+    for (let i = 0; i < micData.length; i++) sum += micData[i] * micData[i];
+    const rms = Math.sqrt(sum / micData.length);
+    // auto-level: rms relative to a slowly-decaying peak, blended by the AGC slider
+    peak = Math.max(rms, peak * 0.995, 0.015);
+    const agc = parseFloat($("agc").value);
+    const norm = (1 - agc) * rms * parseFloat($("gain").value) + agc * (rms / peak);
+    return Math.min(1, Math.pow(norm, parseFloat($("curve").value)));
+  }
+
+  // ---------- state machine ----------
+  const pill = $("pill"), ptext = $("ptext"), dots = $("dots");
+  let state = "idle", raf, frame = 0;
+
+  function loop() {
+    frame++;
+    if (state === "listening") {
+      if (frame % parseInt($("scroll").value) === 0) {
+        history.push(micLevel()); history.shift();
+      }
+      bars.forEach((b, i) => b.style.height = Math.max(3, history[i] * 26) + "px");
+      snakeHead = (snakeHead + snakeL / (2.25 * 60)) % snakeL;
+      const len = snakeL * 0.18;
+      // twin parallel snakes: doubled dash pattern = two lines 180° apart
+      for (const el of snakeLayers) {
+        el.setAttribute("stroke-dasharray", `${len} ${snakeL / 2 - len} ${len} ${snakeL / 2 - len}`);
+        el.setAttribute("stroke-dashoffset", -(snakeHead - len));
+      }
+    }
+    raf = requestAnimationFrame(loop);
+  }
+  loop();
+
+  async function start() {
+    if (state !== "idle") return;
+    state = "intro";
+    await initMic();
+    history = new Array(BARS).fill(0.04);
+    pill.classList.remove("orb", "pop");
+    wavebox.style.display = ""; dots.style.display = "none";
+    ptext.textContent = "Listening"; ptext.classList.remove("small");
+    pill.style.transition = `opacity ${$("intro").value}ms cubic-bezier(.2,1.4,.4,1), transform ${$("intro").value}ms cubic-bezier(.2,1.4,.4,1)`;
+    pill.classList.add("on");
+    ackSound();
+    requestAnimationFrame(() => requestAnimationFrame(buildRim));
+    setTimeout(() => state = "listening", parseInt($("intro").value));
+  }
+
+  function stop() {
+    if (state !== "listening") return;
+    state = "processing";
+    stopSound();
+    rim.style.opacity = 0;
+    // morph into the orb + short processing hint
+    pill.style.transition = `all ${$("morph").value}ms cubic-bezier(.6,0,.3,1)`;
+    pill.classList.add("orb");
+    // brief "Processing…" pill-let above the orb
+    const hint = document.createElement("div");
+    hint.textContent = "Processing…";
+    Object.assign(hint.style, {
+      position: "absolute", bottom: "126px", left: "50%", transform: "translateX(-50%)",
+      padding: "5px 12px", borderRadius: "99px", fontSize: "12px", fontWeight: 700,
+      background: "rgba(18,18,24,.7)", color: "rgba(255,255,255,.75)",
+      backdropFilter: "blur(10px)", opacity: 0, transition: "opacity .2s",
+    });
+    document.body.appendChild(hint);
+    requestAnimationFrame(() => hint.style.opacity = 1);
+
+    // fake ASR latency ~ real Parakeet: 150-400ms
+    setTimeout(() => { hint.remove(); transmit(); }, 650);
+  }
+
+  function transmit() {
+    state = "beam";
+    transmitSound();
+    const orbR = pill.getBoundingClientRect();
+    const caretR = $("caret").getBoundingClientRect();
+    const x1 = orbR.left + orbR.width / 2, y1 = orbR.top + orbR.height / 2;
+    const x2 = caretR.left + 1, y2 = caretR.top + caretR.height / 2;
+    const dist = Math.hypot(x2 - x1, y2 - y1);
+    const ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+    const beam = $("beam"), photon = $("photon"), impact = $("impact");
+    Object.assign(beam.style, {
+      left: x1 + "px", top: y1 + "px", width: dist + "px",
+      transform: `rotate(${ang}deg)`, opacity: 1,
+      transition: `opacity .15s`,
+    });
+    const T = parseInt($("beamT").value);
+    photon.style.opacity = 1;
+    photon.animate(
+      [{ left: x1 - 5 + "px", top: y1 - 5 + "px" }, { left: x2 - 5 + "px", top: y2 - 5 + "px" }],
+      { duration: T, easing: "cubic-bezier(.5,0,.8,1)", fill: "forwards" });
+    setTimeout(() => {
+      photon.style.opacity = 0; beam.style.opacity = 0;
+      Object.assign(impact.style, { left: x2 - 4 + "px", top: y2 - 4 + "px" });
+      impact.classList.remove("impacting"); void impact.offsetWidth;
+      impact.classList.add("impacting");
+      pill.classList.add("pop");
+      typeText("okay so the thing about the launch is that distribution beats product every single time");
+    }, T);
+  }
+
+  function typeText(text) {
+    state = "typing";
+    const typed = $("typed");
+    typed.textContent = "";
+    let i = 0;
+    const iv = setInterval(() => {
+      typed.textContent += text[i++];
+      if (i >= text.length) {
+        clearInterval(iv);
+        setTimeout(() => { pill.classList.remove("on", "pop", "orb"); rim.style.opacity = 1; state = "idle"; }, 400);
+      }
+    }, parseInt($("typeT").value));
+  }
+
+  $("go").addEventListener("click", () => state === "idle" ? start() : stop());
+  document.addEventListener("keydown", e => {
+    if (e.code === "Space") { e.preventDefault(); state === "idle" ? start() : stop(); }
+  });
+</script>
+</body>
+</html>

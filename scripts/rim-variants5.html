@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sotto — twin snake variants (1:1)</title>
+<style>
+  :root { --orange: #ff9f1c; --gold: #ffcc59; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "SF Pro Rounded", BlinkMacSystemFont, sans-serif;
+    min-height: 100vh; padding: 44px 56px;
+    background:
+      radial-gradient(1100px 600px at 15% 0%, #232c4a 0%, transparent 60%),
+      radial-gradient(900px 700px at 85% 30%, #40224a 0%, transparent 55%),
+      #101016;
+    color: #fff;
+  }
+  h1 { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+  p.sub { color: rgba(255,255,255,.5); font-size: 13px; margin-bottom: 30px; }
+  .controls {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 18px; margin-bottom: 30px;
+    background: rgba(16,16,22,.85); backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,.1); border-radius: 14px;
+  }
+  .controls label { font-size: 13px; font-weight: 700; color: var(--gold); white-space: nowrap; }
+  .controls input[type=range] { flex: 1; accent-color: var(--orange); }
+  .controls output { font-size: 13px; font-weight: 700; width: 56px; text-align: right; }
+  .variant { margin-bottom: 34px; }
+  .variant h2 { font-size: 13px; font-weight: 700; color: var(--gold); margin-bottom: 10px; }
+  .lap { color: rgba(255,255,255,.45); font-weight: 600; font-size: 12px; margin-left: 10px; }
+
+  .pill {
+    position: relative;
+    display: inline-flex; align-items: center; gap: 11px;
+    padding: 11px 21px; min-height: 46px;
+    border-radius: 999px;
+    background: rgba(18,18,24,.5);
+    backdrop-filter: blur(28px) saturate(1.5);
+    -webkit-backdrop-filter: blur(28px) saturate(1.5);
+    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    font-size: 14px; font-weight: 600; color: rgba(255,255,255,.88);
+  }
+  .pill::before {
+    content: ""; position: absolute; inset: 0; border-radius: 999px; padding: 1px;
+    background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.03));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+  }
+  .pill svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  .pill svg rect { fill: none; stroke-linecap: round; }
+  .trail { stroke: url(#trailGrad); }
+  .trailGlow { stroke: var(--orange); opacity: .5; filter: blur(3px); }
+  .wave { display: flex; align-items: center; gap: 3px; height: 26px; }
+  .wave i {
+    width: 3px; border-radius: 99px;
+    background: linear-gradient(0deg, var(--orange), var(--gold));
+    animation: bounce 1.1s ease-in-out infinite;
+  }
+  @keyframes bounce { 0%,100% { height: var(--lo); } 50% { height: var(--hi); } }
+</style>
+</head>
+<body>
+  <svg width="0" height="0"><defs>
+    <linearGradient id="trailGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff9f1c"/><stop offset="100%" stop-color="#ffcc59"/>
+    </linearGradient>
+  </defs></svg>
+
+  <h1>Twin snakes — top and bottom, in parallel</h1>
+  <p class="sub">Your Snake + Glow (18%, 2.25s lap baseline = your 2.0× pick), now with two lines. Slider still live.</p>
+
+  <div class="controls">
+    <label>Speed</label>
+    <input type="range" id="speed" min="0.3" max="4" step="0.1" value="1">
+    <output id="speedout">1.0×</output>
+  </div>
+
+  <div class="variant" data-mode="parallel" data-len="0.18" data-lap="2.25" data-w="1.5" data-glow="1">
+    <h2>1 · TWIN PARALLEL — two snakes 180° apart, same direction: when one rides the top, the other rides the bottom<span class="lap"></span></h2>
+    <span class="pill"><span class="wave" data-bars="22"></span> Listening</span>
+  </div>
+
+  <div class="variant" data-mode="mirror" data-len="0.18" data-lap="2.25" data-w="1.5" data-glow="1">
+    <h2>2 · TWIN MIRROR — two snakes moving opposite ways, perfectly symmetric: they kiss at the ends and part<span class="lap"></span></h2>
+    <span class="pill"><span class="wave" data-bars="22"></span> Listening</span>
+  </div>
+
+  <div class="variant" data-mode="parallel" data-len="0.3" data-lap="2.6" data-w="1.5" data-glow="1">
+    <h2>3 · TWIN PARALLEL LONG — same as 1 but longer lines (30%), nearly a full lit rim that rotates<span class="lap"></span></h2>
+    <span class="pill"><span class="wave" data-bars="22"></span> Listening</span>
+  </div>
+
+<script>
+  for (const wave of document.querySelectorAll(".wave")) {
+    const n = +wave.dataset.bars;
+    for (let i = 0; i < n; i++) {
+      const bar = document.createElement("i");
+      bar.style.setProperty("--hi", 8 + Math.random() * 18 + "px");
+      bar.style.setProperty("--lo", 3 + Math.random() * 4 + "px");
+      bar.style.animationDelay = -(Math.random() * 1.1) + "s";
+      bar.style.animationDuration = (0.8 + Math.random() * 0.6) + "s";
+      wave.appendChild(bar);
+    }
+  }
+
+  const slider = document.getElementById("speed");
+  const out = document.getElementById("speedout");
+  const runners = [];
+
+  for (const v of document.querySelectorAll(".variant")) {
+    const pill = v.querySelector(".pill");
+    const { width, height } = pill.getBoundingClientRect();
+    const w = parseFloat(v.dataset.w);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    const mk = cls => {
+      const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      const inset = w / 2 + 0.5;
+      r.setAttribute("x", inset); r.setAttribute("y", inset);
+      r.setAttribute("width", width - 2 * inset); r.setAttribute("height", height - 2 * inset);
+      r.setAttribute("rx", (height - 2 * inset) / 2);
+      r.setAttribute("stroke-width", cls === "trailGlow" ? w + 2.5 : w);
+      r.setAttribute("class", cls);
+      svg.appendChild(r);
+      return r;
+    };
+    // two snakes = two layer groups, each (glow + line)
+    const snakes = [0, 1].map(() => {
+      const layers = [];
+      if (v.dataset.glow) layers.push(mk("trailGlow"));
+      layers.push(mk("trail"));
+      return layers;
+    });
+    pill.prepend(svg);
+    const L = snakes[0][0].getTotalLength();
+    runners.push({
+      v, snakes, L,
+      mode: v.dataset.mode,
+      len: parseFloat(v.dataset.len) * L,
+      lap: parseFloat(v.dataset.lap),
+      head: 0,
+    });
+  }
+
+  let last = performance.now();
+  function tick(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const m = parseFloat(slider.value);
+    for (const r of runners) {
+      const speed = r.L / (r.lap / m);
+      r.head = (r.head + speed * dt) % r.L;
+      // snake 0: forward. snake 1: parallel = +L/2 same direction;
+      // mirror = reflected across the vertical axis (runs backward).
+      const heads = r.mode === "parallel"
+        ? [r.head, (r.head + r.L / 2) % r.L]
+        : [r.head, (r.L - r.head + r.L / 2) % r.L];
+      heads.forEach((h, i) => {
+        for (const el of r.snakes[i]) {
+          el.setAttribute("stroke-dasharray", `${r.len} ${r.L - r.len}`);
+          el.setAttribute("stroke-dashoffset", -(h - r.len));
+        }
+      });
+      r.v.querySelector(".lap").textContent =
+        ` → lap ${(r.lap / m).toFixed(2)}s at ${m.toFixed(1)}×`;
+    }
+    out.textContent = m.toFixed(1) + "×";
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+</script>
+</body>
+</html>

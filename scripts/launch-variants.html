@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sotto - slingshot launch variants</title>
+<style>
+  :root { --orange: #ff9f1c; --gold: #ffcc59; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "SF Pro Rounded", BlinkMacSystemFont, sans-serif;
+    background: #0d1020; color: #e8eaf2; min-height: 100vh; overflow: hidden;
+    cursor: crosshair;
+  }
+  header { padding: 28px 34px 10px; }
+  h1 { font-size: 22px; }
+  p.sub { color: #9aa0b4; font-size: 14px; margin-top: 6px; max-width: 720px; }
+  .bar {
+    display: flex; gap: 10px; padding: 14px 34px; align-items: center; flex-wrap: wrap;
+  }
+  .bar button {
+    background: #1a1f33; color: #e8eaf2; border: 1px solid #2a3050;
+    border-radius: 10px; padding: 10px 16px; font-size: 14px; font-weight: 600;
+    cursor: pointer;
+  }
+  .bar button.active { background: var(--orange); color: #14100a; border-color: var(--orange); }
+  .bar label { font-size: 12px; color: #9aa0b4; margin-left: 12px; }
+  .bar input[type=range] { accent-color: var(--orange); vertical-align: middle; }
+  .bar output { font-size: 12px; color: var(--gold); font-weight: 700; width: 46px; display: inline-block; }
+  #pill {
+    position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%);
+    width: 42px; height: 42px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 32%, var(--gold), var(--orange) 55%, #b35c00);
+    box-shadow: 0 0 18px 4px rgba(255,159,28,.55), 0 0 60px 14px rgba(255,159,28,.25);
+  }
+  #orb {
+    position: fixed; width: 42px; height: 42px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 32%, var(--gold), var(--orange) 55%, #b35c00);
+    box-shadow: 0 0 18px 4px rgba(255,159,28,.55);
+    display: none; pointer-events: none; z-index: 5;
+  }
+  .ring {
+    position: fixed; border: 2px solid var(--gold); border-radius: 50%;
+    width: 10px; height: 10px; pointer-events: none; z-index: 4;
+    animation: ring .45s ease-out forwards;
+  }
+  @keyframes ring {
+    from { transform: translate(-50%,-50%) scale(.4); opacity: .95; }
+    to   { transform: translate(-50%,-50%) scale(5); opacity: 0; }
+  }
+  .hint { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+    color: #9aa0b4; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Slingshot launch — 5 variants</h1>
+  <p class="sub">Pick a variant, then press <b>Space</b> (or click anywhere) — the orb shoots from the pill to wherever your mouse is. Same beam target logic as the app, only the launch motion changes.</p>
+</header>
+<div class="bar" id="bar">
+  <label>speed <input type="range" id="speed" min="0.5" max="2" step="0.1" value="1"><output id="speedout">1.0×</output></label>
+</div>
+<div id="pill"></div>
+<div id="orb"></div>
+<div class="hint">Space or click = fire · aim frozen the instant the shot fires, like the app</div>
+<script>
+  const $ = id => document.getElementById(id);
+  const orb = $("orb"), pill = $("pill");
+  let mouse = { x: innerWidth / 2, y: 200 };
+  addEventListener("mousemove", e => { mouse = { x: e.clientX, y: e.clientY }; });
+
+  // Every variant: phases of { dur, pos(t, ctx) } run in sequence.
+  // ctx: start {x,y}, live mouse getter, dir unit vector at release.
+  const VARIANTS = [
+    { id: "usopp", name: "1 · Usopp",
+      hint: "pull back 110ms, then released at full speed — pure slingshot",
+      pull: .3, pullDur: 110, flightDur: 260, ease: t => 1 - (1 - t) ** 3 },
+    { id: "bullet", name: "2 · Bullet",
+      hint: "no wind-up at all: instant max velocity, dead straight",
+      pull: 0, pullDur: 0, flightDur: 190, ease: t => 1 - (1 - t) ** 2 },
+    { id: "overshoot", name: "3 · Overshoot",
+      hint: "shoots past the cursor, elastically snaps back onto it",
+      pull: .22, pullDur: 90, flightDur: 340,
+      ease: t => { const s = 1.4; t -= 1; return t * t * ((s + 1) * t + s) + 1; } },
+    { id: "streak", name: "4 · Streak",
+      hint: "Usopp release + the orb stretches into a light streak mid-flight",
+      pull: .3, pullDur: 110, flightDur: 260, ease: t => 1 - (1 - t) ** 3, stretch: true },
+    { id: "recoil", name: "5 · Recoil",
+      hint: "bullet flight, but the pill kicks backward on release (Newton)",
+      pull: 0, pullDur: 0, flightDur: 200, ease: t => 1 - (1 - t) ** 2, recoil: true },
+  ];
+  let current = VARIANTS[0];
+
+  const bar = $("bar");
+  for (const v of VARIANTS) {
+    const b = document.createElement("button");
+    b.textContent = v.name; b.title = v.hint;
+    b.onclick = () => { current = v; document.querySelectorAll("#bar button").forEach(x => x.classList.remove("active")); b.classList.add("active"); fire(); };
+    bar.insertBefore(b, bar.querySelector("label"));
+  }
+  bar.querySelector("button").classList.add("active");
+  $("speed").oninput = () => $("speedout").textContent = (+$("speed").value).toFixed(1) + "×";
+
+  let flying = false;
+  function fire() {
+    if (flying) return;
+    flying = true;
+    const k = 1 / +$("speed").value;
+    const r = pill.getBoundingClientRect();
+    const start = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    const v = current;
+    // Target frozen at fire time: the shot is ballistic - no chasing.
+    const aim = { x: mouse.x, y: mouse.y };
+    orb.style.display = "block";
+    pill.style.opacity = 0;
+
+    const t0 = performance.now();
+    const pullDur = v.pullDur * k, flightDur = v.flightDur * k;
+    const pullDist = 46 * v.pull;
+
+    function frame(now) {
+      const el = now - t0;
+      const dir = Math.atan2(aim.y - start.y, aim.x - start.x);
+      if (el < pullDur) {
+        // anticipation: drag backward along the firing line, squash slightly
+        const p = el / pullDur, d = pullDist * (p < .8 ? p / .8 : 1);
+        place(start.x - Math.cos(dir) * d, start.y - Math.sin(dir) * d, 1 + .12 * p, dir, 1);
+      } else if (el < pullDur + flightDur) {
+        const t = v.ease((el - pullDur) / flightDur);
+        const x = start.x + (aim.x - start.x) * t;
+        const y = start.y + (aim.y - start.y) * t;
+        let sx = 1;
+        if (v.stretch) {
+          const mid = 1 - Math.abs((el - pullDur) / flightDur - .5) * 2;
+          sx = 1 + 2.6 * mid;
+        }
+        if (v.recoil && el - pullDur < 90) {
+          const rp = (el - pullDur) / 90;
+          pill.style.opacity = 1 - rp;
+          pill.style.transform = `translateX(calc(-50% - ${Math.cos(dir) * 14 * rp}px)) translateY(${-Math.sin(dir) * 14 * rp}px)`;
+        }
+        place(x, y, 1 - .55 * t, dir, sx);
+      } else {
+        orb.style.display = "none";
+        pill.style.opacity = 1;
+        pill.style.transform = "translateX(-50%)";
+        splash(aim.x, aim.y);
+        flying = false;
+        return;
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function place(x, y, scale, angle, sx) {
+    orb.style.left = x - 21 + "px";
+    orb.style.top = y - 21 + "px";
+    orb.style.transform = `rotate(${angle}rad) scale(${scale * sx}, ${scale})`;
+  }
+  function splash(x, y) {
+    const ring = document.createElement("div");
+    ring.className = "ring";
+    ring.style.left = x + "px"; ring.style.top = y + "px";
+    document.body.appendChild(ring);
+    setTimeout(() => ring.remove(), 500);
+  }
+
+  addEventListener("keydown", e => { if (e.code === "Space") { e.preventDefault(); fire(); } });
+  addEventListener("click", e => { if (!e.target.closest("button,input")) fire(); });
+</script>
+</body>
+</html>

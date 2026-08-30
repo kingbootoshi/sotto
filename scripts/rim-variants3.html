@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sotto — smooth flow variants (1:1)</title>
+<style>
+  :root { --orange: #ff9f1c; --gold: #ffcc59; }
+  @property --a { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "SF Pro Rounded", BlinkMacSystemFont, sans-serif;
+    min-height: 100vh; padding: 44px 56px;
+    background:
+      radial-gradient(1100px 600px at 15% 0%, #232c4a 0%, transparent 60%),
+      radial-gradient(900px 700px at 85% 30%, #40224a 0%, transparent 55%),
+      #101016;
+    color: #fff;
+  }
+  h1 { font-size: 18px; font-weight: 800; margin-bottom: 4px; }
+  p.sub { color: rgba(255,255,255,.5); font-size: 13px; margin-bottom: 34px; }
+  .variant { margin-bottom: 34px; }
+  .controls {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 18px; margin-bottom: 30px;
+    background: rgba(16,16,22,.85); backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,.1); border-radius: 14px;
+  }
+  .controls label { font-size: 13px; font-weight: 700; color: var(--gold); white-space: nowrap; }
+  .controls input[type=range] { flex: 1; accent-color: var(--orange); }
+  .controls output { font-size: 13px; font-weight: 700; width: 56px; text-align: right; }
+  .lap { color: rgba(255,255,255,.45); font-weight: 600; font-size: 12px; margin-left: 10px; }
+
+  .pill {
+    position: relative;
+    display: inline-flex; align-items: center; gap: 11px;
+    padding: 11px 21px; min-height: 46px;
+    border-radius: 999px;
+    background: rgba(18,18,24,.5);
+    backdrop-filter: blur(28px) saturate(1.5);
+    -webkit-backdrop-filter: blur(28px) saturate(1.5);
+    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    font-size: 14px; font-weight: 600; color: rgba(255,255,255,.88);
+  }
+  .pill::before {
+    content: ""; position: absolute; inset: 0; border-radius: 999px; padding: 1px;
+    background: linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.04));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+  }
+  .wave { display: flex; align-items: center; gap: 3px; height: 26px; }
+  .wave i {
+    width: 3px; border-radius: 99px;
+    background: linear-gradient(0deg, var(--orange), var(--gold));
+    animation: bounce 1.1s ease-in-out infinite;
+  }
+  @keyframes bounce { 0%,100% { height: var(--lo); } 50% { height: var(--hi); } }
+
+  /* soft lobe rim layer: one huge sinusoidal glow, no edges anywhere */
+  .flow {
+    position: absolute; inset: 0; border-radius: 999px; padding: 1.5px;
+    background: conic-gradient(from var(--a),
+      transparent 0%,
+      rgba(255,159,28, .10) 12%,
+      rgba(255,159,28, .45) 30%,
+      rgba(255,204,89, var(--peak, .9)) 50%,
+      rgba(255,159,28, .45) 70%,
+      rgba(255,159,28, .10) 88%,
+      transparent 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    animation: drift var(--speed, 4s) linear infinite;
+    animation-direction: var(--dir, normal);
+    pointer-events: none;
+    opacity: var(--o, 1);
+  }
+  @keyframes drift { to { --a: 360deg; } }
+
+  .flow.breathing { animation: drift var(--speed, 8s) linear infinite, inhale 3.2s ease-in-out infinite; }
+  @keyframes inhale { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+</style>
+</head>
+<body>
+  <h1>Smooth flow — 5 candidates, 1:1 scale</h1>
+  <p class="sub">All continuous, all slow, zero discrete objects. Light that drifts and breathes; nothing to track.</p>
+
+  <div class="controls">
+    <label>Rim speed</label>
+    <input type="range" id="speed" min="0.5" max="8" step="0.1" value="1">
+    <output id="speedout">1.0×</output>
+  </div>
+
+  <div class="variant">
+    <h2>1 · ORIGINAL, PERFECTED — one soft lobe, 4s lap, gentle falloff (no hard lines can form)</h2>
+    <span class="pill"><span class="flow" style="--speed:4s"></span>
+      <span class="wave" data-bars="22"></span> Listening</span>
+  </div>
+
+  <div class="variant">
+    <h2>2 · SLOW SILK — same lobe, 6.5s lap, dimmer peak. Barely-there luxury</h2>
+    <span class="pill"><span class="flow" style="--speed:6.5s; --peak:.6"></span>
+      <span class="wave" data-bars="22"></span> Listening</span>
+  </div>
+
+  <div class="variant">
+    <h2>3 · BREATHING DRIFT — 8s lap and the whole glow inhales/exhales on a 3.2s breath</h2>
+    <span class="pill"><span class="flow breathing" style="--speed:8s"></span>
+      <span class="wave" data-bars="22"></span> Listening</span>
+  </div>
+
+  <div class="variant">
+    <h2>4 · AURORA — two soft lobes drifting at different slow speeds; pattern slowly evolves, lava-lamp style</h2>
+    <span class="pill">
+      <span class="flow" style="--speed:4.2s; --o:.75"></span>
+      <span class="flow" style="--speed:5.9s; --a:180deg; --o:.55; --peak:.7"></span>
+      <span class="wave" data-bars="22"></span> Listening</span>
+  </div>
+
+  <div class="variant">
+    <h2>5 · COUNTER-AURORA — two lobes drifting opposite ways, very slow (5s / 7.3s); they merge and part like tides</h2>
+    <span class="pill">
+      <span class="flow" style="--speed:5s; --o:.7"></span>
+      <span class="flow" style="--speed:7.3s; --a:180deg; --dir:reverse; --o:.5; --peak:.65"></span>
+      <span class="wave" data-bars="22"></span> Listening</span>
+  </div>
+
+<script>
+  for (const wave of document.querySelectorAll(".wave")) {
+    const n = +wave.dataset.bars;
+    for (let i = 0; i < n; i++) {
+      const bar = document.createElement("i");
+      bar.style.setProperty("--hi", 8 + Math.random() * 18 + "px");
+      bar.style.setProperty("--lo", 3 + Math.random() * 4 + "px");
+      bar.style.animationDelay = -(Math.random() * 1.1) + "s";
+      bar.style.animationDuration = (0.8 + Math.random() * 0.6) + "s";
+      wave.appendChild(bar);
+    }
+  }
+
+  // Global speed multiplier. Base lap seconds live in --speed; the slider
+  // divides them. Readout per pill shows the effective lap time to report back.
+  const slider = document.getElementById("speed");
+  const out = document.getElementById("speedout");
+  const flows = [...document.querySelectorAll(".flow")].map(el => ({
+    el, base: parseFloat(getComputedStyle(el).getPropertyValue("--speed")) || 4,
+    breathing: el.classList.contains("breathing"),
+  }));
+  for (const h2 of document.querySelectorAll(".variant h2")) {
+    const lap = document.createElement("span");
+    lap.className = "lap";
+    h2.appendChild(lap);
+  }
+  function apply() {
+    const m = parseFloat(slider.value);
+    out.textContent = m.toFixed(1) + "×";
+    for (const f of flows) {
+      const lap = (f.base / m).toFixed(2) + "s";
+      f.el.style.animationDuration = f.breathing ? `${lap}, ${(3.2 / m).toFixed(2)}s` : lap;
+    }
+    document.querySelectorAll(".variant").forEach((v, i) => {
+      const laps = [...v.querySelectorAll(".flow")]
+        .map(el => el.style.animationDuration.split(",")[0]).join(" / ");
+      v.querySelector(".lap").textContent = `→ lap ${laps} at ${m.toFixed(1)}×`;
+    });
+  }
+  slider.addEventListener("input", apply);
+  apply();
+</script>
+</body>
+</html>

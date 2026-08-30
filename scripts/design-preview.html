@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sotto — overlay design workbench</title>
+<style>
+  :root {
+    --orange: #ff9f1c;
+    --gold: #ffcc59;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "SF Pro Rounded", BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+    padding: 48px 56px;
+    background:
+      radial-gradient(1200px 600px at 20% 0%, #2b3a67 0%, transparent 60%),
+      radial-gradient(1000px 700px at 85% 20%, #6b2d5c 0%, transparent 55%),
+      radial-gradient(900px 800px at 50% 100%, #1d4d4f 0%, transparent 60%),
+      #101018;
+    color: #fff;
+  }
+  h1 { font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+  p.sub { color: rgba(255,255,255,.55); font-size: 13px; margin-bottom: 36px; }
+  .variant { margin-bottom: 40px; }
+  .variant h2 {
+    font-size: 14px; font-weight: 700; letter-spacing: .4px;
+    color: var(--gold); margin-bottom: 12px;
+  }
+  .row { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+
+  /* ---------- pill chassis: middle size (between v1 and v2) ---------- */
+  .pill {
+    display: inline-flex; align-items: center; gap: 11px;
+    padding: 11px 21px;
+    border-radius: 999px;
+    background: rgba(20, 20, 26, 0.42);
+    backdrop-filter: blur(28px) saturate(1.5);
+    -webkit-backdrop-filter: blur(28px) saturate(1.5);
+    border: 1px solid transparent;
+    background-clip: padding-box;
+    box-shadow: 0 10px 32px rgba(0,0,0,.38);
+    position: relative;
+    font-size: 14px; font-weight: 600; color: rgba(255,255,255,.88);
+    min-height: 46px;
+  }
+  .pill::before { /* top-lit hairline rim */
+    content: ""; position: absolute; inset: 0; border-radius: 999px;
+    padding: 1px;
+    background: linear-gradient(180deg, rgba(255,255,255,.32), rgba(255,255,255,.05));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+  }
+  .done-text { font-weight: 500; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; max-width: 300px; }
+  .check {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--orange); display: grid; place-items: center;
+    font-size: 11px; color: #14140f; font-weight: 900;
+    animation: pop .45s cubic-bezier(.2,1.6,.4,1);
+  }
+  @keyframes pop { 0% { transform: scale(.3); } 100% { transform: scale(1); } }
+
+  /* ---------- waveform ---------- */
+  .wave { display: flex; align-items: center; gap: 3px; height: 26px; }
+  .wave i {
+    width: 3px; border-radius: 99px;
+    background: linear-gradient(0deg, var(--orange), var(--gold));
+    animation: bounce 1.15s ease-in-out infinite;
+  }
+  .wave.mirror { align-items: center; }
+  .wave.mono i { background: rgba(255,255,255,.92); }
+  @keyframes bounce {
+    0%, 100% { height: var(--lo); }
+    50% { height: var(--hi); }
+  }
+
+  /* ---------- transcribing dots ---------- */
+  .dots { display: flex; gap: 5px; }
+  .dots i {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--orange);
+    animation: blink 1s ease-in-out infinite;
+  }
+  .dots i:nth-child(2) { animation-delay: .18s; }
+  .dots i:nth-child(3) { animation-delay: .36s; }
+  @keyframes blink { 0%, 100% { opacity: .25; transform: scale(.85); }
+    50% { opacity: 1; transform: scale(1); } }
+
+  /* ---------- variant 2: minimal dark ---------- */
+  .v2 .pill { background: rgba(12,12,15,.82); backdrop-filter: blur(10px); box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+  .v2 .pill::before { background: none; }
+
+  /* ---------- variant 3: ring pulse ---------- */
+  .v3 .pill::before {
+    background: conic-gradient(from var(--a, 0deg),
+      var(--orange) 0%, rgba(255,159,28,.06) 30%, rgba(255,204,89,.5) 55%,
+      rgba(255,159,28,.06) 80%, var(--orange) 100%);
+    animation: spin 2.6s linear infinite;
+  }
+  @property --a { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+  @keyframes spin { to { --a: 360deg; } }
+
+  /* ---------- variant 5: breathing glow ---------- */
+  .v5 .pill.glow {
+    animation: breathe 2.2s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { box-shadow: 0 10px 32px rgba(0,0,0,.38), 0 0 22px rgba(255,159,28,.18); }
+    50% { box-shadow: 0 10px 32px rgba(0,0,0,.38), 0 0 42px rgba(255,159,28,.5); }
+  }
+</style>
+</head>
+<body>
+  <h1>Sotto overlay — 5 candidates</h1>
+  <p class="sub">Each row: Listening → Transcribing → Done. Middle size (14px text, 46px tall pill). All animated live.</p>
+
+  <div class="variant v1">
+    <h2>1 · CLASSIC GLASS — orange wave, quiet glass, hairline rim</h2>
+    <div class="row">
+      <span class="pill"><span class="wave" data-bars="20"></span> Listening</span>
+      <span class="pill"><span class="dots"><i></i><i></i><i></i></span> Transcribing</span>
+      <span class="pill"><span class="check">✓</span><span class="done-text">Hello, hello.</span></span>
+    </div>
+  </div>
+
+  <div class="variant v2">
+    <h2>2 · MINIMAL DARK — solid ink, white wave, zero chrome</h2>
+    <div class="row">
+      <span class="pill"><span class="wave mono" data-bars="20"></span> Listening</span>
+      <span class="pill"><span class="dots"><i></i><i></i><i></i></span> Transcribing</span>
+      <span class="pill"><span class="check">✓</span><span class="done-text">Hello, hello.</span></span>
+    </div>
+  </div>
+
+  <div class="variant v3">
+    <h2>3 · RING PULSE — glass with a slow orange light running the rim</h2>
+    <div class="row">
+      <span class="pill"><span class="wave" data-bars="20"></span> Listening</span>
+      <span class="pill"><span class="dots"><i></i><i></i><i></i></span> Transcribing</span>
+      <span class="pill"><span class="check">✓</span><span class="done-text">Hello, hello.</span></span>
+    </div>
+  </div>
+
+  <div class="variant v4">
+    <h2>4 · MIRROR WAVE — no words while listening, just a centered voice ribbon</h2>
+    <div class="row">
+      <span class="pill"><span class="wave mirror" data-bars="30"></span></span>
+      <span class="pill"><span class="dots"><i></i><i></i><i></i></span> Transcribing</span>
+      <span class="pill"><span class="check">✓</span><span class="done-text">Hello, hello.</span></span>
+    </div>
+  </div>
+
+  <div class="variant v5">
+    <h2>5 · BREATHING GLOW — classic glass + soft orange halo that breathes while listening</h2>
+    <div class="row">
+      <span class="pill glow"><span class="wave" data-bars="20"></span> Listening</span>
+      <span class="pill"><span class="dots"><i></i><i></i><i></i></span> Transcribing</span>
+      <span class="pill"><span class="check">✓</span><span class="done-text">Hello, hello.</span></span>
+    </div>
+  </div>
+
+<script>
+  // Build waveform bars with organic per-bar animation offsets.
+  for (const wave of document.querySelectorAll(".wave")) {
+    const n = +wave.dataset.bars;
+    const mirror = wave.classList.contains("mirror");
+    for (let i = 0; i < n; i++) {
+      const bar = document.createElement("i");
+      const c = mirror ? Math.abs(i - n / 2) / (n / 2) : Math.random();
+      const hi = mirror ? 6 + (1 - c) * 20 + Math.random() * 5 : 8 + Math.random() * 18;
+      const lo = 3 + Math.random() * 4;
+      bar.style.setProperty("--hi", hi + "px");
+      bar.style.setProperty("--lo", lo + "px");
+      bar.style.animationDelay = -(Math.random() * 1.15) + "s";
+      bar.style.animationDuration = (0.8 + Math.random() * 0.7) + "s";
+      wave.appendChild(bar);
+    }
+  }
+</script>
+</body>
+</html>

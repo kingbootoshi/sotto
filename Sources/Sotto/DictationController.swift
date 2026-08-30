@@ -165,6 +165,7 @@ final class DictationController {
                     text: nil, confidence: nil, processingTime: nil,
                     error: String(describing: error)),
                 wavURL: url)
+            NSLog("Sotto: transcription failed for \(url.lastPathComponent): \(error)")
             overlay.update(
                 phase: .error("Transcription failed. The recording is kept in History."))
             overlay.hide(after: 3.5)
@@ -241,6 +242,7 @@ final class DictationController {
                     text: nil, confidence: nil, processingTime: nil,
                     error: String(describing: error)),
                 wavURL: url)
+            NSLog("Sotto: retry failed for \(url.lastPathComponent): \(error)")
             return false
         }
     }

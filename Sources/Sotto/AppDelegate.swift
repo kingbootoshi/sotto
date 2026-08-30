@@ -3,6 +3,37 @@ import ApplicationServices
 import ServiceManagement
 import SwiftUI
 
+/// Accessory (menu-bar) apps launch with no main menu, and macOS routes
+/// cmd-A/C/V/X/Z through the Edit menu's key equivalents - without this,
+/// muscle-memory editing is dead in every window the app ever shows.
+@MainActor
+func installMainMenu() {
+    let main = NSMenu()
+
+    let fileHolder = NSMenuItem()
+    main.addItem(fileHolder)
+    let file = NSMenu(title: "File")
+    file.addItem(
+        withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)),
+        keyEquivalent: "w")
+    fileHolder.submenu = file
+
+    let editHolder = NSMenuItem()
+    main.addItem(editHolder)
+    let edit = NSMenu(title: "Edit")
+    edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+    edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+    edit.addItem(.separator())
+    edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+    edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+    edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+    edit.addItem(
+        withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+    editHolder.submenu = edit
+
+    NSApp.mainMenu = main
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
@@ -16,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         title: "Recover Unfinished Recordings", action: #selector(recoverUnfinished), keyEquivalent: "")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installMainMenu()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         setIcon(recording: false)
         statusItem.menu = buildMenu()

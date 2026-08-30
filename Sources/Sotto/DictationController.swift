@@ -132,12 +132,15 @@ final class DictationController {
 
     private func transcribe(id: UUID, url: URL, duration: TimeInterval) async {
         let modelName = Preferences.shared.modelLabel
+        // History sorts by createdAt = when the words were SPOKEN, not when
+        // transcription finished - recovery order must match speaking order.
+        let startedAt = Date().addingTimeInterval(-duration)
         do {
             let result = try await engine.transcribe(url: url)
             let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             history.finalize(
                 record: DictationRecord(
-                    id: id, createdAt: Date(), duration: duration, model: modelName,
+                    id: id, createdAt: startedAt, duration: duration, model: modelName,
                     text: text, confidence: result.confidence,
                     processingTime: result.processingTime, error: nil),
                 wavURL: url)
@@ -158,7 +161,7 @@ final class DictationController {
         } catch {
             history.finalize(
                 record: DictationRecord(
-                    id: id, createdAt: Date(), duration: duration, model: modelName,
+                    id: id, createdAt: startedAt, duration: duration, model: modelName,
                     text: nil, confidence: nil, processingTime: nil,
                     error: String(describing: error)),
                 wavURL: url)
@@ -194,12 +197,13 @@ final class DictationController {
         var recovered = 0
         for url in pending {
             let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) ?? UUID()
+            let spokenAt = Self.recordingDate(of: url)
             HistoryStore.repairWavHeader(at: url)
             do {
                 let result = try await engine.transcribe(url: url)
                 history.finalize(
                     record: DictationRecord(
-                        id: id, createdAt: Date(), duration: result.duration,
+                        id: id, createdAt: spokenAt, duration: result.duration,
                         model: Preferences.shared.modelLabel,
                         text: result.text, confidence: result.confidence,
                         processingTime: result.processingTime, error: nil),
@@ -217,12 +221,13 @@ final class DictationController {
     func retryTranscription(url: URL) async -> Bool {
         guard engine.isReady else { return false }
         let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) ?? UUID()
+        let spokenAt = Self.recordingDate(of: url)
         HistoryStore.repairWavHeader(at: url)
         do {
             let result = try await engine.transcribe(url: url)
             history.finalize(
                 record: DictationRecord(
-                    id: id, createdAt: Date(), duration: result.duration,
+                    id: id, createdAt: spokenAt, duration: result.duration,
                     model: Preferences.shared.modelLabel,
                     text: result.text, confidence: result.confidence,
                     processingTime: result.processingTime, error: nil),
@@ -231,13 +236,19 @@ final class DictationController {
         } catch {
             history.finalize(
                 record: DictationRecord(
-                    id: id, createdAt: Date(), duration: 0,
+                    id: id, createdAt: spokenAt, duration: 0,
                     model: Preferences.shared.modelLabel,
                     text: nil, confidence: nil, processingTime: nil,
                     error: String(describing: error)),
                 wavURL: url)
             return false
         }
+    }
+
+    /// The WAV's creation date is when the words were actually spoken -
+    /// recovered and retried records must keep their true place in History.
+    private static func recordingDate(of url: URL) -> Date {
+        (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
     }
 
     private func setState(_ newState: State) {

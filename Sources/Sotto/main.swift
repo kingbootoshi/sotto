@@ -30,6 +30,7 @@ if arguments.count >= 3, arguments[1] == "transcribe" {
     // Headless-ish smoke test: open only the History window over real data.
     MainActor.assumeIsolated {
         let app = NSApplication.shared
+        installMainMenu()
         app.setActivationPolicy(.regular)
         HistoryWindowController.shared.show()
         app.run()

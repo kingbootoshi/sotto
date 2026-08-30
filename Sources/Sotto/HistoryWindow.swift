@@ -197,11 +197,17 @@ struct HistoryView: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
             } else if entry.isUnfinished {
-                Text("Unfinished recording - not transcribed yet.")
+                Text("Not transcribed yet - press Retry to hear it become words.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            } else if entry.error != nil {
+                // The raw error lives in the JSON record and the log - a
+                // human reading this row needs the way out, not the trace.
+                Text("Transcription didn't finish. Your audio is safe - press Retry.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             } else {
-                Text(entry.error.map { "Transcription failed: \($0)" } ?? "No words heard.")
+                Text("No words were heard in this one.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }

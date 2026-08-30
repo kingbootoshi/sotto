@@ -69,9 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(recoverMenuItem)
 
         let historyItem = NSMenuItem(
-            title: "Open History Folder", action: #selector(openHistory), keyEquivalent: "h")
+            title: "History…", action: #selector(openHistory), keyEquivalent: "h")
         historyItem.image = NSImage(
-            systemSymbolName: "folder", accessibilityDescription: nil)
+            systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: nil)
         historyItem.target = self
         menu.addItem(historyItem)
 
@@ -118,7 +118,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openHistory() {
-        HistoryStore.shared.openInFinder()
+        HistoryWindowController.shared.retryHandler = { [weak self] url in
+            await self?.controller.retryTranscription(url: url) ?? false
+        }
+        HistoryWindowController.shared.show()
     }
 
     @objc private func recoverUnfinished() {

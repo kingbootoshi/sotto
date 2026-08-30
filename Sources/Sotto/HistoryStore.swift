@@ -51,6 +51,74 @@ final class HistoryStore {
         }
     }
 
+    /// One row in the History window: a finished record (JSON, usually with
+    /// its WAV beside it) or an unfinished WAV awaiting recovery.
+    struct Entry: Identifiable {
+        let id: UUID
+        let createdAt: Date
+        let record: DictationRecord?
+        let wavURL: URL?
+        var text: String? { record?.text }
+        var duration: TimeInterval? { record?.duration }
+        var error: String? { record?.error }
+        var isUnfinished: Bool { record == nil }
+    }
+
+    /// Every dictation on disk, newest first.
+    func allEntries() -> [Entry] {
+        guard
+            let enumerator = FileManager.default.enumerator(
+                at: baseURL, includingPropertiesForKeys: [.creationDateKey])
+        else { return [] }
+        var wavs: [String: URL] = [:]
+        var jsons: [URL] = []
+        for case let url as URL in enumerator {
+            if url.pathExtension == "wav" { wavs[url.deletingPathExtension().path] = url }
+            if url.pathExtension == "json" { jsons.append(url) }
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        var entries: [Entry] = []
+        for jsonURL in jsons {
+            let stem = jsonURL.deletingPathExtension().path
+            guard let data = try? Data(contentsOf: jsonURL),
+                let record = try? decoder.decode(DictationRecord.self, from: data)
+            else { continue }
+            entries.append(
+                Entry(
+                    id: record.id, createdAt: record.createdAt, record: record,
+                    wavURL: wavs.removeValue(forKey: stem)))
+        }
+        for (_, wavURL) in wavs {
+            let created =
+                (try? wavURL.resourceValues(forKeys: [.creationDateKey]).creationDate)
+                ?? .distantPast
+            let id = UUID(uuidString: wavURL.deletingPathExtension().lastPathComponent) ?? UUID()
+            entries.append(Entry(id: id, createdAt: created, record: nil, wavURL: wavURL))
+        }
+        return entries.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// Moves a dictation's WAV+JSON pair to the Trash.
+    func trash(_ entry: Entry) {
+        let urls = [
+            entry.wavURL,
+            entry.wavURL?.deletingPathExtension().appendingPathExtension("json"),
+        ]
+        for case let url? in urls {
+            try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        }
+        if entry.wavURL == nil, let record = entry.record {
+            // JSON-only record: find it by id across day folders.
+            if let enumerator = FileManager.default.enumerator(at: baseURL, includingPropertiesForKeys: nil) {
+                for case let url as URL in enumerator
+                where url.lastPathComponent == "\(record.id.uuidString).json" {
+                    try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                }
+            }
+        }
+    }
+
     /// WAV files that never got a JSON record (crash or force-quit mid-flight).
     func unfinishedRecordings() -> [URL] {
         guard

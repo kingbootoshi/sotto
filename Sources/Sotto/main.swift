@@ -26,6 +26,14 @@ if arguments.count >= 3, arguments[1] == "transcribe" {
     dispatchMain()
 } else if arguments.count >= 2, arguments[1] == "designpreview" {
     MainActor.assumeIsolated { runDesignPreview() }
+} else if arguments.count >= 2, arguments[1] == "historypreview" {
+    // Headless-ish smoke test: open only the History window over real data.
+    MainActor.assumeIsolated {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.regular)
+        HistoryWindowController.shared.show()
+        app.run()
+    }
 } else {
     MainActor.assumeIsolated {
         let app = NSApplication.shared

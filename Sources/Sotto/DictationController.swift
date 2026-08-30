@@ -212,6 +212,34 @@ final class DictationController {
         return recovered
     }
 
+    /// Re-transcribes one WAV from the History window (unfinished or failed
+    /// takes). Overwrites the record beside the WAV on success or failure.
+    func retryTranscription(url: URL) async -> Bool {
+        guard engine.isReady else { return false }
+        let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) ?? UUID()
+        HistoryStore.repairWavHeader(at: url)
+        do {
+            let result = try await engine.transcribe(url: url)
+            history.finalize(
+                record: DictationRecord(
+                    id: id, createdAt: Date(), duration: result.duration,
+                    model: Preferences.shared.modelLabel,
+                    text: result.text, confidence: result.confidence,
+                    processingTime: result.processingTime, error: nil),
+                wavURL: url)
+            return true
+        } catch {
+            history.finalize(
+                record: DictationRecord(
+                    id: id, createdAt: Date(), duration: 0,
+                    model: Preferences.shared.modelLabel,
+                    text: nil, confidence: nil, processingTime: nil,
+                    error: String(describing: error)),
+                wavURL: url)
+            return false
+        }
+    }
+
     private func setState(_ newState: State) {
         state = newState
         onStateChange?(newState)

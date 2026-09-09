@@ -11,6 +11,12 @@ final class Recorder {
     private var startedAt: Date?
     private var configObserver: NSObjectProtocol?
     private var writeFailures = 0
+    /// Written on the audio thread, read by the watchdog on main. Guarded
+    /// because the watchdog must never misread a torn value into a false
+    /// interrupt during a live take.
+    private let bufferClock = NSLock()
+    private var lastBufferAt = Date()
+    private var watchdog: Timer?
     /// Rolling peak for the waveform auto-leveler.
     private var peak: Float = 0.08
 
@@ -45,6 +51,9 @@ final class Recorder {
             do {
                 try file.write(from: buffer)
                 self.writeFailures = 0
+                self.bufferClock.lock()
+                self.lastBufferAt = Date()
+                self.bufferClock.unlock()
             } catch {
                 // A full or failing disk must end the take safely, not eat it.
                 self.writeFailures += 1
@@ -59,6 +68,23 @@ final class Recorder {
         startedAt = Date()
         writeFailures = 0
         peak = 0.08
+        bufferClock.lock()
+        lastBufferAt = Date()
+        bufferClock.unlock()
+        // The config-change notification does not always fire when input
+        // dies (some device drops just go quiet). Buffers arriving is the
+        // only honest liveness signal: 3 silent seconds = the take is over,
+        // save it.
+        watchdog = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+            guard let self, self.isRecording else { return timer.invalidate() }
+            self.bufferClock.lock()
+            let quiet = Date().timeIntervalSince(self.lastBufferAt)
+            self.bufferClock.unlock()
+            if quiet > 3.0 {
+                timer.invalidate()
+                self.onInterrupt?()
+            }
+        }
         // Input device changed or vanished (AirPods disconnect, dock unplug):
         // the engine stops delivering buffers. Save what was captured.
         configObserver = NotificationCenter.default.addObserver(
@@ -73,6 +99,8 @@ final class Recorder {
     @discardableResult
     func stop() -> TimeInterval {
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
+        watchdog?.invalidate()
+        watchdog = nil
         configObserver = nil
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
@@ -82,13 +110,6 @@ final class Recorder {
         return duration
     }
 
-    /// Stops and deletes the partial WAV (explicit user cancel only).
-    func cancel() {
-        let url = fileURL
-        stop()
-        if let url { try? FileManager.default.removeItem(at: url) }
-        fileURL = nil
-    }
 
     /// Waveform feel locked from the HTML prototype (gain 7, curve .75,
     /// auto-level .6): blends absolute loudness with a rolling-peak

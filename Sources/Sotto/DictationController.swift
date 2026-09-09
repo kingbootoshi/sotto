@@ -69,10 +69,15 @@ final class DictationController {
     }
 
     func escapePressed() {
-        guard case .recording = state else { return }
-        recorder.cancel()
+        guard case .recording(let id, let url) = state else { return }
+        // Esc aborts the DELIVERY, never the audio: the take is stopped,
+        // kept, and transcribed straight into History with no paste. Global
+        // Esc is fired constantly (vim, dialogs) - it must never eat words.
+        let duration = recorder.stop()
         overlay.hide()
         setState(.idle)
+        guard duration > 0.05 else { return discardEmptyContainer(url) }
+        Task { await transcribe(id: id, url: url, duration: duration, deliver: false) }
     }
 
     private func beginRecording() async {
@@ -86,8 +91,13 @@ final class DictationController {
         guard case .arming = state else { return }
 
         let id = UUID()
+        guard let url = try? history.newRecordingURL(id: id) else {
+            overlay.show(phase: .error("Could not create a recording file. Check your disk space."))
+            overlay.hide(after: 3.5)
+            setState(.idle)
+            return
+        }
         do {
-            let url = try history.newRecordingURL(id: id)
             recorder.onLevel = { [weak self] level in
                 DispatchQueue.main.async { self?.overlay.model.pushLevel(level) }
             }
@@ -107,7 +117,8 @@ final class DictationController {
                 finishRecording(id: id, url: url)
             }
         } catch {
-            recorder.cancel()
+            recorder.stop()
+            discardEmptyContainer(url)
             overlay.show(phase: .error("Could not start recording: \(error.localizedDescription)"))
             overlay.hide(after: 3.5)
             setState(.idle)
@@ -119,7 +130,9 @@ final class DictationController {
         aimAtStop = NSEvent.mouseLocation
         let duration = recorder.stop()
         guard duration >= minimumDuration else {
-            try? FileManager.default.removeItem(at: url)
+            // Accidental blip: no words possible, but audio is never deleted -
+            // only a container with no audio in it may be discarded.
+            discardEmptyContainer(url)
             overlay.hide()
             setState(.idle)
             return
@@ -130,7 +143,22 @@ final class DictationController {
         Task { await transcribe(id: id, url: url, duration: duration) }
     }
 
-    private func transcribe(id: UUID, url: URL, duration: TimeInterval) async {
+    /// The ONLY removal in the app, and it refuses anything holding audio:
+    /// a WAV at header size (< 8 KB ≈ 0.02 s) contains no speech. Anything
+    /// larger survives as an unfinished take and gets transcribed.
+    private func discardEmptyContainer(_ url: URL) {
+        let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        if bytes < 8192 {
+            try? FileManager.default.removeItem(at: url)
+        } else {
+            let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) ?? UUID()
+            Task { await transcribe(id: id, url: url, duration: 0, deliver: false) }
+        }
+    }
+
+    private func transcribe(
+        id: UUID, url: URL, duration: TimeInterval, deliver: Bool = true
+    ) async {
         let modelName = Preferences.shared.modelLabel
         // History sorts by createdAt = when the words were SPOKEN, not when
         // transcription finished - recovery order must match speaking order.
@@ -144,7 +172,10 @@ final class DictationController {
                     text: text, confidence: result.confidence,
                     processingTime: result.processingTime, error: nil),
                 wavURL: url)
-            if text.isEmpty {
+            if !deliver {
+                // Esc / blip salvage: the words are safe in History; no
+                // paste, no cinematic, no overlay - the user moved on.
+            } else if text.isEmpty {
                 overlay.update(phase: .error("Heard no words. The recording is kept in History."))
                 overlay.hide(after: 2.5)
             } else {
@@ -166,11 +197,13 @@ final class DictationController {
                     error: String(describing: error)),
                 wavURL: url)
             NSLog("Sotto: transcription failed for \(url.lastPathComponent): \(error)")
-            overlay.update(
-                phase: .error("Transcription failed. The recording is kept in History."))
-            overlay.hide(after: 3.5)
+            if deliver {
+                overlay.update(
+                    phase: .error("Transcription failed. The recording is kept in History."))
+                overlay.hide(after: 3.5)
+            }
         }
-        setState(.idle)
+        if deliver { setState(.idle) }
     }
 
     /// The Comet cinematic: charge the orb, then beam it straight to the

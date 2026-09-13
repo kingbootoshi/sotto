@@ -74,10 +74,16 @@ enum Paster {
     }
 
     /// Synthesizes Cmd-V into the frontmost app. Call only after copy(_:).
-    /// Returns false when Accessibility trust is missing and no event was sent.
+    /// Returns false when Accessibility trust is missing and no event was
+    /// sent. `done` fires after the whole event sequence has posted - the
+    /// delivery queue must not let a later take touch the pasteboard before
+    /// then.
     @discardableResult
-    static func sendCmdV() -> Bool {
-        guard AXIsProcessTrusted() else { return false }
+    static func sendCmdV(done: @escaping () -> Void = {}) -> Bool {
+        guard AXIsProcessTrusted() else {
+            done()
+            return false
+        }
 
         // Small settle delay: in toggle mode the stop tap's own modifier
         // events are still in flight when transcription finishes.
@@ -96,6 +102,7 @@ enum Paster {
                 event?.post(tap: .cghidEventTap)
                 usleep(8000)
             }
+            done()
         }
         return true
     }

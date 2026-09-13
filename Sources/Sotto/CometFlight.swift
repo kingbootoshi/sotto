@@ -40,9 +40,10 @@ private struct SplashRingView: View {
 /// 110ms slingshot pull-back along the firing line, then a 260ms cubic
 /// ease-out shot that stretches into a light streak mid-flight. Blooms a
 /// splash ring at the frozen landing point.
+/// Each flight is self-contained (own panel, own timer): rapid takes may
+/// have several comets airborne at once.
 @MainActor
 final class CometFlightController {
-    private var timer: Timer?
 
     private static func makePanel(size: CGFloat) -> NSPanel {
         let panel = NSPanel(
@@ -62,7 +63,6 @@ final class CometFlightController {
     /// Completion fires exactly once, at arrival. `aim` is the mouse
     /// position captured at the stop tap - ballistic, never re-read.
     func fly(from start: CGPoint, aim: CGPoint, onArrive: @escaping () -> Void) {
-        timer?.invalidate()
         // Panel is oversized so the rotated streak never clips: 42pt orb
         // stretched 3.6× on its axis ≈ 152pt diagonal.
         let panelSize: CGFloat = 170
@@ -93,7 +93,7 @@ final class CometFlightController {
         panel.orderFrontRegardless()
 
         let startedAt = CACurrentMediaTime()
-        let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { [weak self] timer in
+        let timer = Timer(timeInterval: 1.0 / 120.0, repeats: true) { timer in
             Task { @MainActor in
                 let elapsed = CACurrentMediaTime() - startedAt
                 if elapsed < pullDur {
@@ -114,14 +114,12 @@ final class CometFlightController {
                         scale: 1 - 0.55 * t, stretch: 1 + 2.6 * mid)
                 } else {
                     timer.invalidate()
-                    self?.timer = nil
                     panel.orderOut(nil)
-                    self?.splash(at: aim)
+                    self.splash(at: aim)
                     onArrive()
                 }
             }
         }
-        self.timer = timer
         RunLoop.main.add(timer, forMode: .common)
     }
 

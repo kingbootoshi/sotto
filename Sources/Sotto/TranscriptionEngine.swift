@@ -51,7 +51,14 @@ final class TranscriptionEngine {
         let job = Task { () throws -> ASRResult in
             await prev.value
             var decoderState = try TdtDecoderState(decoderLayers: 2)
-            return try await manager.transcribe(url, decoderState: &decoderState)
+            let raw = try await manager.transcribe(url, decoderState: &decoderState)
+            // The spoken-form dictionary rides the one canonical path: every
+            // consumer (live, salvage, recovery, retry) gets corrected text.
+            let fixed = Vocabulary.apply(raw.text)
+            guard fixed != raw.text else { return raw }
+            return ASRResult(
+                text: fixed, confidence: raw.confidence, duration: raw.duration,
+                processingTime: raw.processingTime, tokenTimings: raw.tokenTimings)
         }
         tail = Task { _ = try? await job.value }
         return try await job.value

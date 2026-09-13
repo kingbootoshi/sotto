@@ -20,10 +20,10 @@ final class DictationController {
     /// microsecond the hotkey lands is the intent moment; the hand is
     /// already moving on while transcription and the charge run.
     private var aimAtStop = CGPoint.zero
-    /// Deliveries (transcribe → charge → flight → paste) run serialized
-    /// behind recording: a new take may start while the last comet flies,
-    /// but clipboard-set → ⌘V pairs never interleave between takes.
-    private var deliveryTail: Task<Void, Never>?
+    /// Only the pasteboard critical section (re-copy → ⌘V posted) is
+    /// serialized between takes; transcriptions chain inside the engine and
+    /// comets fly concurrently. Rapid takes pew-pew instead of queueing.
+    private var pasteTail: Task<Void, Never>?
     /// Bumped whenever a newer take claims the overlay; an older delivery
     /// seeing a stale generation skips visuals (its words are already safe).
     private var overlayGen = 0
@@ -160,18 +160,30 @@ final class DictationController {
         enqueueDelivery(id: id, url: url, duration: duration, deliver: true)
     }
 
-    /// Chains one take's full delivery behind the previous one. Recording is
-    /// already free again; only clipboard→paste ordering is serialized.
+    /// Fires one take's delivery (transcribe → charge → flight → paste).
+    /// Deliveries overlap; the paste chain alone enforces exclusivity.
     private func enqueueDelivery(id: UUID, url: URL, duration: TimeInterval, deliver: Bool) {
         let aim = aimAtStop
         let chargeStart = Date()
         let gen = overlayGen
-        let prev = deliveryTail
-        deliveryTail = Task { [weak self] in
-            await prev?.value
+        Task { [weak self] in
             await self?.transcribe(
                 id: id, url: url, duration: duration,
                 aim: aim, chargeStart: chargeStart, gen: gen, deliver: deliver)
+        }
+    }
+
+    /// The pasteboard critical section: each arrival re-copies its own
+    /// transcript immediately before ⌘V, so overlapping deliveries can
+    /// never paste another take's words.
+    private func enqueuePaste(_ text: String) {
+        let prev = pasteTail
+        pasteTail = Task {
+            await prev?.value
+            Paster.copy(text)
+            await withCheckedContinuation { continuation in
+                Paster.sendCmdV { continuation.resume() }
+            }
         }
     }
 
@@ -219,7 +231,7 @@ final class DictationController {
                 // Clipboard first — the words are safe before any cinematic.
                 Paster.copy(text)
                 if AXIsProcessTrusted() {
-                    await launchComet(aim: aim, chargeStart: chargeStart, gen: gen)
+                    await launchComet(aim: aim, chargeStart: chargeStart, gen: gen, text: text)
                 } else if owns {
                     overlay.update(phase: .error(
                         "Copied to the clipboard — press ⌘V. Turn on Sotto in System Settings, Privacy, Accessibility for automatic paste."))
@@ -246,9 +258,7 @@ final class DictationController {
     /// landed, transcription already ran underneath it - only the beat's
     /// remainder is waited out here. The transcript is on the clipboard
     /// before any animation; the cinematic can die without losing words.
-    /// Awaited so the delivery chain never lets a later take's clipboard
-    /// overwrite this one before its ⌘V fires.
-    private func launchComet(aim: CGPoint, chargeStart: Date, gen: Int) async {
+    private func launchComet(aim: CGPoint, chargeStart: Date, gen: Int, text: String) async {
         let remaining = chargeBeat - Date().timeIntervalSince(chargeStart)
         if remaining > 0 {
             try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
@@ -259,12 +269,9 @@ final class DictationController {
             overlay.vanish()
         }
         SoundPlayer.shared.play(.launch)
-        await withCheckedContinuation { continuation in
-            flight.fly(from: start, aim: aim) {
-                SoundPlayer.shared.play(.arrive)
-                Paster.sendCmdV()
-                continuation.resume()
-            }
+        flight.fly(from: start, aim: aim) { [weak self] in
+            SoundPlayer.shared.play(.arrive)
+            self?.enqueuePaste(text)
         }
     }
 

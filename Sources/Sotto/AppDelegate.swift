@@ -48,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
+        Vocabulary.ensureFile()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         setIcon(recording: false)
         statusItem.menu = buildMenu()
@@ -107,6 +108,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         historyItem.target = self
         menu.addItem(historyItem)
 
+        let vocabularyItem = NSMenuItem(
+            title: "Vocabulary…", action: #selector(openVocabulary), keyEquivalent: "")
+        vocabularyItem.image = NSImage(
+            systemSymbolName: "character.book.closed", accessibilityDescription: nil)
+        vocabularyItem.target = self
+        menu.addItem(vocabularyItem)
+
         let settingsItem = NSMenuItem(
             title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -121,7 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func refreshHint() {
         let key = Preferences.shared.hotkey.shortLabel
-        hintMenuItem.title = "Tap \(key) to dictate, tap again to stop, Esc cancels"
+        hintMenuItem.title = "Tap \(key) to dictate, tap again to stop, Esc skips the paste"
     }
 
     private func setIcon(recording: Bool) {
@@ -147,6 +155,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !AXIsProcessTrustedWithOptions(options) {
             NSLog("Sotto: waiting for Accessibility trust (needed for the hotkey and paste)")
         }
+    }
+
+    @objc private func openVocabulary() {
+        Vocabulary.ensureFile()
+        NSWorkspace.shared.open(Vocabulary.fileURL)
     }
 
     @objc private func openHistory() {

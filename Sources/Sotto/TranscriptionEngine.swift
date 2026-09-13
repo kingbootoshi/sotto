@@ -23,6 +23,11 @@ final class TranscriptionEngine {
 
     private(set) var status: Status = .idle
     private var manager: AsrManager?
+    /// AsrManager owns shared mutable ANE buffers: overlapping calls corrupt
+    /// each other. Every transcription chains behind the previous one.
+    /// ponytail: callers are main-thread only (controller + CLI); `tail` is
+    /// unguarded on that assumption.
+    private var tail: Task<Void, Never> = Task {}
     var onStatusChange: ((Status) -> Void)?
 
     var isReady: Bool { status == .ready }
@@ -42,8 +47,14 @@ final class TranscriptionEngine {
 
     func transcribe(url: URL) async throws -> ASRResult {
         guard let manager else { throw SottoError.modelsNotReady }
-        var decoderState = try TdtDecoderState(decoderLayers: 2)
-        return try await manager.transcribe(url, decoderState: &decoderState)
+        let prev = tail
+        let job = Task { () throws -> ASRResult in
+            await prev.value
+            var decoderState = try TdtDecoderState(decoderLayers: 2)
+            return try await manager.transcribe(url, decoderState: &decoderState)
+        }
+        tail = Task { _ = try? await job.value }
+        return try await job.value
     }
 
     private func setStatus(_ status: Status) {

@@ -11,7 +11,6 @@ final class DictationController {
         case idle
         case arming
         case recording(id: UUID, url: URL)
-        case transcribing
     }
 
     private(set) var state: State = .idle
@@ -21,6 +20,13 @@ final class DictationController {
     /// microsecond the hotkey lands is the intent moment; the hand is
     /// already moving on while transcription and the charge run.
     private var aimAtStop = CGPoint.zero
+    /// Deliveries (transcribe → charge → flight → paste) run serialized
+    /// behind recording: a new take may start while the last comet flies,
+    /// but clipboard-set → ⌘V pairs never interleave between takes.
+    private var deliveryTail: Task<Void, Never>?
+    /// Bumped whenever a newer take claims the overlay; an older delivery
+    /// seeing a stale generation skips visuals (its words are already safe).
+    private var overlayGen = 0
 
     private let recorder = Recorder()
     private let overlay = OverlayPanelController()
@@ -33,6 +39,9 @@ final class DictationController {
     private var minimumDuration: TimeInterval { 0.35 }
     /// Down-to-up gap that separates a tap (toggle) from a hold (push-to-talk).
     private var holdThreshold: TimeInterval { 0.5 }
+    /// The certified charge beat: the orb pulses this long at minimum while
+    /// transcription runs underneath it.
+    private var chargeBeat: TimeInterval { 0.52 }
 
     func hotkeyDown() {
         switch state {
@@ -74,19 +83,24 @@ final class DictationController {
         // kept, and transcribed straight into History with no paste. Global
         // Esc is fired constantly (vim, dialogs) - it must never eat words.
         let duration = recorder.stop()
+        overlayGen += 1
         overlay.hide()
         setState(.idle)
         guard duration > 0.05 else { return discardEmptyContainer(url) }
-        Task { await transcribe(id: id, url: url, duration: duration, deliver: false) }
+        enqueueDelivery(id: id, url: url, duration: duration, deliver: false)
     }
 
     private func beginRecording() async {
-        let granted = await AVCaptureDevice.requestAccess(for: .audio)
-        guard granted else {
-            overlay.show(phase: .error(SottoError.microphoneDenied.localizedDescription))
-            overlay.hide(after: 3.5)
-            setState(.idle)
-            return
+        // The sync status check keeps the granted path free of an async hop:
+        // the permission dialog is a first-run event, not a per-take cost.
+        if AVCaptureDevice.authorizationStatus(for: .audio) != .authorized {
+            let granted = await AVCaptureDevice.requestAccess(for: .audio)
+            guard granted else {
+                overlay.show(phase: .error(SottoError.microphoneDenied.localizedDescription))
+                overlay.hide(after: 3.5)
+                setState(.idle)
+                return
+            }
         }
         guard case .arming = state else { return }
 
@@ -109,6 +123,7 @@ final class DictationController {
             }
             try recorder.start(to: url)
             setState(.recording(id: id, url: url))
+            overlayGen += 1
             overlay.model.resetLevels()
             overlay.show(phase: .listening)
             SoundPlayer.shared.play(.ack)
@@ -137,10 +152,27 @@ final class DictationController {
             setState(.idle)
             return
         }
-        setState(.transcribing)
+        setState(.idle)
         SoundPlayer.shared.play(.merge)
         overlay.mergeToOrb()
-        Task { await transcribe(id: id, url: url, duration: duration) }
+        SoundPlayer.shared.play(.charge)
+        overlay.model.charging = true
+        enqueueDelivery(id: id, url: url, duration: duration, deliver: true)
+    }
+
+    /// Chains one take's full delivery behind the previous one. Recording is
+    /// already free again; only clipboard→paste ordering is serialized.
+    private func enqueueDelivery(id: UUID, url: URL, duration: TimeInterval, deliver: Bool) {
+        let aim = aimAtStop
+        let chargeStart = Date()
+        let gen = overlayGen
+        let prev = deliveryTail
+        deliveryTail = Task { [weak self] in
+            await prev?.value
+            await self?.transcribe(
+                id: id, url: url, duration: duration,
+                aim: aim, chargeStart: chargeStart, gen: gen, deliver: deliver)
+        }
     }
 
     /// The ONLY removal in the app, and it refuses anything holding audio:
@@ -152,12 +184,14 @@ final class DictationController {
             try? FileManager.default.removeItem(at: url)
         } else {
             let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) ?? UUID()
-            Task { await transcribe(id: id, url: url, duration: 0, deliver: false) }
+            enqueueDelivery(id: id, url: url, duration: 0, deliver: false)
         }
     }
 
     private func transcribe(
-        id: UUID, url: URL, duration: TimeInterval, deliver: Bool = true
+        id: UUID, url: URL, duration: TimeInterval,
+        aim: CGPoint = .zero, chargeStart: Date = .distantPast,
+        gen: Int = -1, deliver: Bool = true
     ) async {
         let modelName = Preferences.shared.modelLabel
         // History sorts by createdAt = when the words were SPOKEN, not when
@@ -172,18 +206,21 @@ final class DictationController {
                     text: text, confidence: result.confidence,
                     processingTime: result.processingTime, error: nil),
                 wavURL: url)
+            let owns = gen == overlayGen
             if !deliver {
                 // Esc / blip salvage: the words are safe in History; no
                 // paste, no cinematic, no overlay - the user moved on.
             } else if text.isEmpty {
-                overlay.update(phase: .error("Heard no words. The recording is kept in History."))
-                overlay.hide(after: 2.5)
+                if owns {
+                    overlay.update(phase: .error("Heard no words. The recording is kept in History."))
+                    overlay.hide(after: 2.5)
+                }
             } else {
                 // Clipboard first — the words are safe before any cinematic.
                 Paster.copy(text)
                 if AXIsProcessTrusted() {
-                    await launchComet()
-                } else {
+                    await launchComet(aim: aim, chargeStart: chargeStart, gen: gen)
+                } else if owns {
                     overlay.update(phase: .error(
                         "Copied to the clipboard — press ⌘V. Turn on Sotto in System Settings, Privacy, Accessibility for automatic paste."))
                     overlay.hide(after: 5)
@@ -197,30 +234,37 @@ final class DictationController {
                     error: String(describing: error)),
                 wavURL: url)
             NSLog("Sotto: transcription failed for \(url.lastPathComponent): \(error)")
-            if deliver {
+            if deliver, gen == overlayGen {
                 overlay.update(
                     phase: .error("Transcription failed. The recording is kept in History."))
                 overlay.hide(after: 3.5)
             }
         }
-        if deliver { setState(.idle) }
     }
 
-    /// The Comet cinematic: charge the orb, then beam it straight to the
-    /// live mouse cursor, paste on arrival. The transcript is already on the
-    /// clipboard before any animation - the cinematic can die without losing
-    /// words.
-    private func launchComet() async {
-        overlay.model.charging = true
-        SoundPlayer.shared.play(.charge)
-        try? await Task.sleep(nanoseconds: 520_000_000)
-        overlay.model.charging = false
+    /// The Comet cinematic: the charge began the instant the stop tap
+    /// landed, transcription already ran underneath it - only the beat's
+    /// remainder is waited out here. The transcript is on the clipboard
+    /// before any animation; the cinematic can die without losing words.
+    /// Awaited so the delivery chain never lets a later take's clipboard
+    /// overwrite this one before its ⌘V fires.
+    private func launchComet(aim: CGPoint, chargeStart: Date, gen: Int) async {
+        let remaining = chargeBeat - Date().timeIntervalSince(chargeStart)
+        if remaining > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+        }
         let start = overlay.orbCenter
+        if gen == overlayGen {
+            overlay.model.charging = false
+            overlay.vanish()
+        }
         SoundPlayer.shared.play(.launch)
-        overlay.vanish()
-        flight.fly(from: start, aim: aimAtStop) {
-            SoundPlayer.shared.play(.arrive)
-            Paster.sendCmdV()
+        await withCheckedContinuation { continuation in
+            flight.fly(from: start, aim: aim) {
+                SoundPlayer.shared.play(.arrive)
+                Paster.sendCmdV()
+                continuation.resume()
+            }
         }
     }
 

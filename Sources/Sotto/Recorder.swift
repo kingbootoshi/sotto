@@ -1,13 +1,16 @@
 import AVFoundation
 import Foundation
+import Synchronization
 
 /// Streams the default input device into a WAV file at the device's native
 /// format. FluidAudio's AudioConverter normalizes to 16 kHz mono at
 /// transcription time, so the recording stays a faithful raw artifact.
 final class Recorder {
     private let engine = AVAudioEngine()
-    /// Guarded by bufferClock: the audio thread reads `file` per buffer while
-    /// the main thread swaps it on start/stop of a take.
+    /// Read per buffer on the audio thread, swapped on main at take
+    /// boundaries (the app's original pattern). No lock may ever sit on
+    /// the audio thread: a main-thread holder can block the realtime
+    /// render, and allocation there is equally forbidden.
     private var file: AVAudioFile?
     private(set) var fileURL: URL?
     private var startedAt: Date?
@@ -17,16 +20,18 @@ final class Recorder {
     /// rapid next tap starts with zero spin-up. Costs 8s of orange mic dot.
     private var engineHot = false
     private var cooldown: Timer?
-    /// Written on the audio thread, read by the watchdog on main. Guarded
-    /// because the watchdog must never misread a torn value into a false
-    /// interrupt during a live take.
-    private let bufferClock = NSLock()
-    private var lastBufferAt = Date()
+    /// Audio-buffer liveness the watchdog can trust: bumped lock-free on
+    /// the audio thread per buffer, snapshot-compared on main at 1 Hz.
+    /// Never routed through the main queue - a stalled UI must not read
+    /// as a dead mic (and no lock may ever sit on the audio thread).
+    private let bufferTicks = Atomic<UInt64>(0)
+    private var watchdogLastTicks: UInt64 = 0
+    private var watchdogQuietTicks = 0
     private var watchdog: Timer?
     /// Rolling peak for the waveform auto-leveler.
     private var peak: Float = 0.08
 
-    /// Normalized display level per buffer, called on the audio thread.
+    /// Normalized display level per buffer, called on the main thread.
     var onLevel: ((Float) -> Void)?
     /// Called on the main thread when capture dies mid-recording (device
     /// changed or disk writes keep failing). The owner must finish and save.
@@ -52,19 +57,13 @@ final class Recorder {
         let newFile = try AVAudioFile(
             forWriting: url, settings: settings,
             commonFormat: .pcmFormatFloat32, interleaved: false)
-        bufferClock.lock()
         file = newFile
-        bufferClock.unlock()
         fileURL = url
 
         if !engineHot {
             input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
                 guard let self else { return }
-                self.bufferClock.lock()
-                let file = self.file
-                self.lastBufferAt = Date()
-                self.bufferClock.unlock()
-                guard let file else { return }
+                guard let file = self.file else { return }
                 do {
                     try file.write(from: buffer)
                     self.writeFailures = 0
@@ -75,7 +74,11 @@ final class Recorder {
                         DispatchQueue.main.async { self.onInterrupt?() }
                     }
                 }
-                self.onLevel?(self.displayLevel(buffer))
+                let level = self.displayLevel(buffer)
+                DispatchQueue.main.async {
+                    self.onLevel?(level)
+                }
+                self.bufferTicks.wrappingAdd(1, ordering: .relaxed)
             }
             engine.prepare()
             do {
@@ -103,19 +106,22 @@ final class Recorder {
         startedAt = Date()
         writeFailures = 0
         peak = 0.08
-        bufferClock.lock()
-        lastBufferAt = Date()
-        bufferClock.unlock()
+        watchdogLastTicks = bufferTicks.load(ordering: .relaxed)
+        watchdogQuietTicks = 0
         // The config-change notification does not always fire when input
         // dies (some device drops just go quiet). Buffers arriving is the
         // only honest liveness signal: 3 silent seconds = the take is over,
         // save it.
         watchdog = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
             guard let self, self.isRecording else { return timer.invalidate() }
-            self.bufferClock.lock()
-            let quiet = Date().timeIntervalSince(self.lastBufferAt)
-            self.bufferClock.unlock()
-            if quiet > 3.0 {
+            let ticks = self.bufferTicks.load(ordering: .relaxed)
+            if ticks == self.watchdogLastTicks {
+                self.watchdogQuietTicks += 1
+            } else {
+                self.watchdogLastTicks = ticks
+                self.watchdogQuietTicks = 0
+            }
+            if self.watchdogQuietTicks >= 3 {
                 timer.invalidate()
                 self.onInterrupt?()
             }
@@ -127,9 +133,7 @@ final class Recorder {
     func stop() -> TimeInterval {
         watchdog?.invalidate()
         watchdog = nil
-        bufferClock.lock()
         file = nil
-        bufferClock.unlock()
         let duration = startedAt.map { Date().timeIntervalSince($0) } ?? 0
         startedAt = nil
         cooldown = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { [weak self] _ in

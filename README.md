@@ -48,7 +48,7 @@ that slingshots your transcript to the cursor.
 ./scripts/bundle.sh    # swift build -c release → /Applications/Sotto.app
 ```
 
-Requires macOS 14+ and Apple Silicon (the ASR models are CoreML/ANE).
+Requires macOS 15+ and Apple Silicon (the ASR models are CoreML/ANE).
 Permissions: **Microphone** (recording) and **Accessibility** (global hotkey +
 synthesized ⌘V). The bundle script signs with a `Sotto Dev Signing` identity
 if one exists in your keychain (stable signature = permission grants survive

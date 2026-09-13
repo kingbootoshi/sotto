@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Sotto",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("15.0")],
     dependencies: [
         .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.15.6")
     ],

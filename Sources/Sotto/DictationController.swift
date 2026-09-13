@@ -113,7 +113,7 @@ final class DictationController {
         }
         do {
             recorder.onLevel = { [weak self] level in
-                DispatchQueue.main.async { self?.overlay.model.pushLevel(level) }
+                self?.overlay.model.pushLevel(level)
             }
             recorder.onInterrupt = { [weak self] in
                 guard let self, case .recording(let id, let url) = self.state else { return }

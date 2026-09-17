@@ -69,6 +69,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys.onEscape = { [weak self] in Task { @MainActor in self?.controller.escapePressed() } }
         hotkeys.start()
 
+        // System sleep tears down the CoreAudio HAL for background accessory
+        // apps. Without this observer, the next hotkey tap after wake touches
+        // an AVAudioEngine whose inputNode is gone and the process dies.
+        // Finish any live take and drop the engine so the next start()
+        // acquires a fresh one.
+        // (AVAudioSession.interruptionNotification is iOS-only; the canonical
+        // macOS signal here is NSWorkspace.willSleepNotification, which
+        // covers display sleep / lock / lid close.)
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.controller.handleSystemSleepOrInterruption() }
+        }
+
         promptForAccessibilityIfNeeded()
         refreshHint()
         prepareEngine()

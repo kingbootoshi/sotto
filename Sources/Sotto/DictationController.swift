@@ -90,6 +90,17 @@ final class DictationController {
         enqueueDelivery(id: id, url: url, duration: duration, deliver: false)
     }
 
+    /// Called by AppDelegate when the system is about to sleep / the audio
+    /// session is interrupted. If we were recording, finish cleanly first so
+    /// the take stays on disk; then drop the audio engine so the next hotkey
+    /// press does not touch a CoreAudio-suspended AVAudioEngine.
+    func handleSystemSleepOrInterruption() {
+        if case .recording(let id, let url) = state {
+            finishRecording(id: id, url: url)
+        }
+        recorder.forceReset()
+    }
+
     private func beginRecording() async {
         // The sync status check keeps the granted path free of an async hop:
         // the permission dialog is a first-run event, not a per-take cost.

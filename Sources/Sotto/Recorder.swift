@@ -6,7 +6,12 @@ import Synchronization
 /// format. FluidAudio's AudioConverter normalizes to 16 kHz mono at
 /// transcription time, so the recording stays a faithful raw artifact.
 final class Recorder {
-    private let engine = AVAudioEngine()
+    /// Held only while recording (or inside the hot-mic window). The engine
+    /// is dropped to nil on system sleep / audio interruption, because the
+    /// CoreAudio HAL has been suspended out from under us — a "hot" engine
+    /// at that point will crash the next start() when it touches
+    /// inputNode. Next start() acquires a fresh one from acquireEngine().
+    private var engine: AVAudioEngine?
     /// Read per buffer on the audio thread, swapped on main at take
     /// boundaries (the app's original pattern). No lock may ever sit on
     /// the audio thread: a main-thread holder can block the realtime
@@ -42,6 +47,11 @@ final class Recorder {
     func start(to url: URL) throws {
         cooldown?.invalidate()
         cooldown = nil
+        // If the engine is hot and still alive (within the wake cycle), reuse
+        // it; otherwise acquire a fresh one. forceReset() drops the reference
+        // on system sleep / audio interruption, so a stale engine never reaches
+        // inputNode after the CoreAudio HAL has been suspended under us.
+        let engine = acquireEngine()
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { throw SottoError.noMicrophone }
@@ -143,14 +153,47 @@ final class Recorder {
     }
 
     private func goCold() {
-        guard engineHot, !isRecording else { return }
+        guard engineHot else {
+            cooldown?.invalidate()
+            cooldown = nil
+            return
+        }
+        if isRecording { return }
         cooldown?.invalidate()
         cooldown = nil
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
         configObserver = nil
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        if let engine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
+        engine = nil
         engineHot = false
+    }
+
+    /// Returns the existing engine if it is still alive (still hot, still
+    /// running). Builds and stores a fresh one otherwise. The fresh engine
+    /// is the default for the very first start() and for any start() after
+    /// forceReset() dropped the prior reference (system sleep, audio
+    /// interruption, mid-take rescue).
+    private func acquireEngine() -> AVAudioEngine {
+        if let engine, engineHot, engine.isRunning {
+            return engine
+        }
+        let fresh = AVAudioEngine()
+        engine = fresh
+        engineHot = false
+        return fresh
+    }
+
+    /// Drops the engine reference entirely. Called when the audio HAL has
+    /// been suspended out from under us (system sleep / display lock or an
+    /// AVAudioSession interruption began) — the next start() will then
+    /// acquire a fresh engine. No-op while a take is live; the caller must
+    /// finish the take first so the WAV stays intact.
+    func forceReset() {
+        guard !isRecording else { return }
+        goCold()
     }
 
 

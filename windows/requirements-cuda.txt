@@ -1,0 +1,8 @@
+# Source install for NVIDIA cards: fastest path (CUDA EP, ~80 ms for 11 s of audio on an RTX 5070)
+onnx-asr[hub]
+onnxruntime-gpu[cuda,cudnn]
+numpy
+sounddevice
+soundcard
+pystray
+pillow

@@ -8,6 +8,22 @@ Everything runs on your Mac: no cloud, no account, no audio leaves the device.
 tap hotkey → WAV on disk → Parakeet TDT (Neural Engine) → orb charges → streak → ⌘V paste
 ```
 
+## Windows
+
+There's a Windows port in [`windows/`](windows/), using the same loop and the same model:
+tap **Right Alt**, speak, tap again, and the text pastes at your cursor. It runs
+Parakeet TDT 0.6B v2 on your GPU through ONNX Runtime (DirectML on any DX12 GPU,
+CUDA on NVIDIA when run from source). It's fully local, lives in the tray,
+starts with Windows, and restarts itself if it crashes or the GPU resets.
+
+**Download:** grab `Sotto-windows-x64.zip` from
+[Releases](https://github.com/kingbootoshi/sotto/releases), unzip it, and run `Sotto.exe`.
+The model is bundled in the zip, so there's nothing else to download.
+Speed on an RTX 5070: about 210 ms for 11.5 s of speech with the exe (DirectML), or about 80 ms
+when run from source with `requirements-cuda.txt`.
+
+Build it yourself: `windows/build_exe.py` (see the header of that file).
+
 ## Why
 
 Local ASR on Apple Silicon is now faster and more accurate than most cloud

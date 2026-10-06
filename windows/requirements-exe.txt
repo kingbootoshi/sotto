@@ -1,0 +1,12 @@
+onnx-asr
+onnxruntime-directml
+numpy
+sounddevice
+soundcard
+pystray
+pillow
+pyinstaller
+# only for tools_make_fp16.py:
+onnx
+onnxconverter-common
+huggingface-hub

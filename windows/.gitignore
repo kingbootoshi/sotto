@@ -1,0 +1,7 @@
+.venv*/
+models/
+dist/
+build/
+__pycache__/
+bench.wav
+tests/shots/

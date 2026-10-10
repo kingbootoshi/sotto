@@ -28,7 +28,11 @@ DEFAULTS = {
     "auto_paste": True,
     "sounds": True,
     "comet": False,
-    "esc_cancels": True,
+    # Esc while recording discards the paste. Off: Esc is how you back out of a
+    # snip/screenshot, and that must never kill a take. Only the hotkey ends one.
+    "esc_cancels": False,
+    # Auto-stop (and paste) after this many seconds with no speech. 0 = never.
+    "auto_stop_silence_s": 30,
 }
 
 

@@ -14,6 +14,11 @@ kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 WH_KEYBOARD_LL = 13
 WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP = 0x100, 0x101, 0x104, 0x105
 WM_QUIT = 0x12
+WM_TIMER = 0x113
+REHOOK_MS = 2000  # Windows silently drops an LL hook that is ever slow to answer
+                  # (e.g. the screen freeze of a snip/screenshot). Re-arm it often.
+STALE_S = 1.0     # a held key autorepeats every ~33 ms; a "down" for a key we think
+                  # is held, with nothing heard for >1 s, means its release was lost
 LLKHF_EXTENDED, LLKHF_INJECTED = 0x01, 0x10
 VK_ESCAPE = 0x1B
 
@@ -42,6 +47,8 @@ user32.CallNextHookEx.restype = LRESULT
 user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
 user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT]
 user32.PostThreadMessageW.argtypes = [wintypes.DWORD, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+user32.SetTimer.argtypes = [wintypes.HWND, ctypes.c_size_t, wintypes.UINT, ctypes.c_void_p]
+user32.SetTimer.restype = ctypes.c_size_t
 kernel32.GetModuleHandleW.restype = wintypes.HMODULE
 
 
@@ -64,6 +71,8 @@ class ComboTracker:
         self.keys = [parse_key(k) for k in keys]
         self.held = set()
         self.active = False
+        self.last = {}  # key -> time of its last event
+        self.stale_resets = 0
 
     def match(self, vk, sc):
         for k in self.keys:
@@ -71,11 +80,20 @@ class ComboTracker:
                 return k
         return None
 
-    def feed(self, vk, sc, down):
+    def feed(self, vk, sc, down, t=None):
         """Returns (is_hotkey_key, edge) where edge is 'down'/'up'/None."""
         k = self.match(vk, sc)
         if k is None:
             return False, None
+        if t is not None:
+            prev = self.last.get(k)
+            self.last[k] = t
+            if down and k in self.held and prev is not None and t - prev > STALE_S:
+                # The release got eaten (snip overlay, focus change, secure desktop).
+                # Treat this as a fresh press instead of ignoring the tap.
+                self.held.clear()
+                self.active = False
+                self.stale_resets += 1
         if down:
             self.held.add(k)
         else:
@@ -103,6 +121,8 @@ class HotkeyHook:
         self._tid = None
         self._proc = HOOKPROC(self._cb)  # keep ref alive
         self._hook = None
+        self.rehooks = 0
+        self.rehook_errors = 0
 
     def _cb(self, ncode, wparam, lparam):
         if ncode == 0:
@@ -113,7 +133,7 @@ class HotkeyHook:
                 t = kb.time / 1000.0
                 if self.probe:
                     print(f"{'DOWN' if down else 'up  '} vk=0x{kb.vkCode:02X} sc=0x{sc:04X}", flush=True)
-                is_key, edge = self.combo.feed(kb.vkCode, sc, down)
+                is_key, edge = self.combo.feed(kb.vkCode, sc, down, t)
                 if edge:
                     self.events.put((edge, t))
                 if is_key and self.suppress and len(self.combo.keys) == 1:
@@ -122,15 +142,28 @@ class HotkeyHook:
                     self.events.put(("esc", t))
         return user32.CallNextHookEx(self._hook, ncode, wparam, lparam)
 
+    def _install(self):
+        """(Re)arm the hook: install the new one first, then drop the old, so there is
+        never a moment with no hook."""
+        new = user32.SetWindowsHookExW(WH_KEYBOARD_LL, self._proc, kernel32.GetModuleHandleW(None), 0)
+        if not new:
+            self.rehook_errors += 1
+            return False
+        old, self._hook = self._hook, new
+        if old:
+            user32.UnhookWindowsHookEx(old)
+        self.rehooks += 1
+        return True
+
     def _run(self):
         self._tid = kernel32.GetCurrentThreadId()
-        self._hook = user32.SetWindowsHookExW(WH_KEYBOARD_LL, self._proc,
-                                              kernel32.GetModuleHandleW(None), 0)
-        if not self._hook:
+        if not self._install():
             raise ctypes.WinError(ctypes.get_last_error())
+        user32.SetTimer(None, 0, REHOOK_MS, None)  # thread timer -> WM_TIMER below
         msg = wintypes.MSG()
         while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-            pass
+            if msg.message == WM_TIMER:
+                self._install()
         user32.UnhookWindowsHookEx(self._hook)
 
     def start(self):

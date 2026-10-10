@@ -29,6 +29,41 @@ def unfinished():
     return sorted(p for p in HISTORY_DIR.glob("*/*.wav") if not p.with_suffix(".json").exists())
 
 
+MAX_TRIES = 3  # stops a take that crashes the engine from crash-looping the app
+
+
+def tries(wav_path):
+    try:
+        return int(wav_path.with_suffix(".tries").read_text())
+    except Exception:
+        return 0
+
+
+def bump_try(wav_path):
+    wav_path.with_suffix(".tries").write_text(str(tries(wav_path) + 1))
+
+
+def recoverable():
+    """Audio on disk with no transcript yet: crashed mid-take, crashed mid-transcribe,
+    or transcription errored. Retried at startup, at most MAX_TRIES times per take.
+    The WAV is never removed either way."""
+    if not HISTORY_DIR.exists():
+        return []
+    out = []
+    for wav in sorted(HISTORY_DIR.glob("*/*.wav")):
+        js = wav.with_suffix(".json")
+        if js.exists():
+            try:
+                rec = json.loads(js.read_text(encoding="utf-8"))
+            except Exception:
+                rec = {"error": "unreadable record"}
+            if rec.get("text") is not None or not rec.get("error"):
+                continue  # done (text may be "" = genuinely no words)
+        if tries(wav) < MAX_TRIES:
+            out.append(wav)
+    return out
+
+
 def last_text():
     recs = sorted(HISTORY_DIR.glob("*/*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     for p in recs:

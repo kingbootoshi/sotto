@@ -17,7 +17,8 @@ INSTALL
 USE
   Tap Right Alt        start / stop (toggle)
   Hold Right Alt       push-to-talk: stops when you let go
-  Esc while recording  cancel the paste (the transcript is still saved)
+  30 s of no talking   auto-stops and pastes ("auto_stop_silence_s", 0 = off)
+  Only Right Alt ends a take: Esc, snips and screenshots won't interrupt it.
   Right Alt is taken over by Sotto. Left Alt still works normally.
 
 TRAY MENU (right-click the icon)
@@ -30,6 +31,8 @@ SETTINGS  %LOCALAPPDATA%\Sotto\config.json (Settings in the tray menu), then Res
   "keep_mic_open": true    instant start + 0.25 s pre-roll (mic indicator stays on)
   "auto_paste": true       false = clipboard only
   "sounds": true
+  "auto_stop_silence_s": 30  stop + paste after this much silence (0 = never)
+  "esc_cancels": false     true = Esc while recording cancels the paste
 
 REQUIREMENTS
   Windows 10/11 64-bit. Any DirectX 12 GPU (NVIDIA / AMD / Intel); falls back
@@ -40,6 +43,8 @@ TROUBLESHOOTING
                            the mute button, or pick it in tray -> Microphone.
   Nothing happens in admin windows  Windows blocks hotkeys from normal apps
                                     while an elevated window has focus.
+  Crash or power cut mid-take: the audio is already on disk; Sotto transcribes
+  it on next start (tray -> Copy last transcript).
   Logs: %LOCALAPPDATA%\Sotto\sotto.log   Recordings: %LOCALAPPDATA%\Sotto\History
   Uninstall: tray -> untick Start with Windows -> Quit, delete the folder
              and %LOCALAPPDATA%\Sotto.

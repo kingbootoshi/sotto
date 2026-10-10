@@ -76,7 +76,7 @@ class App:
         try:
             self.engine.load()
             self._title(f"Sotto - ready ({self.engine.provider.replace('ExecutionProvider', '')})")
-            pend = history.unfinished()
+            pend = history.recoverable()
             if pend:
                 log.info("recovering %d unfinished takes", len(pend))
                 for p in pend:
@@ -104,6 +104,10 @@ class App:
         # Mic unplugged / wireless headset asleep / default swapped: the always-on
         # stream goes dead (pure zeros). Reopen it, at most every 10 s.
         now = time.monotonic()
+        hk = (self.hook.rehook_errors, self.hook.combo.stale_resets)
+        if hk != getattr(self, "_hk_seen", (0, 0)):
+            self._hk_seen = hk
+            log.warning("hotkey hook: rehook_errors=%d lost-release resets=%d", *hk)
         if self.cfg["keep_mic_open"] and self.current is None:
             want = self.rec.wanted_name()
             if want and want != self.rec.opened_name:
@@ -139,6 +143,8 @@ class App:
             act = self.sm.up(t)
         else:
             act = self.sm.esc()
+        if act:
+            log.info("hotkey %s -> %s", kind, act)
         if act == "start":
             self._start()
         elif act in ("stop", "cancel"):
@@ -164,15 +170,27 @@ class App:
         self.hook.recording = True
         self.overlay.listening()
         self.sounds.play("ack")
+        self.root.after(500, self._silence_check, tid)
 
-    def _stop(self, deliver):
+    def _silence_check(self, tid):
+        if not self.current or self.current[0] != tid:
+            return  # that take already ended
+        lim = self.cfg.get("auto_stop_silence_s") or 0
+        if lim and self.rec.silence_s() >= lim:
+            log.info("auto-stop: no speech for %ss", lim)
+            self.sm.force_idle()
+            self._stop(deliver=True, trim_silence=True)
+            return
+        self.root.after(500, self._silence_check, tid)
+
+    def _stop(self, deliver, trim_silence=False):
         aim = cursor_pos()  # the stop tap IS the aim moment
         self.hook.recording = False
         if not self.current:
             return
         tid, wav = self.current
         self.current = None
-        audio, dur = self.rec.stop()
+        audio, dur = self.rec.stop(trim_silence=trim_silence)
         if dur < self.cfg["min_duration_s"]:
             self.overlay.hide()
             try:
@@ -200,7 +218,10 @@ class App:
                 self._gpu_healthcheck()
                 continue
             wav, deliver = job["wav"], job["deliver"]
+            recovered = job["audio"] is None
             try:
+                if recovered:
+                    history.bump_try(wav)
                 audio = job["audio"] if job["audio"] is not None else read_wav(wav)
                 dur = job["dur"] or len(audio) / 16000
                 try:
@@ -217,6 +238,8 @@ class App:
                                  processingTime=round(secs, 3), provider=self.engine.provider)
                 log.info("take %.2fs -> %d chars in %.0f ms (%.0fx RT)", dur, len(text), secs * 1000,
                          dur / max(secs, 1e-6))
+                if recovered and text:
+                    self._recovered_notice(text)
                 if not deliver:
                     continue
                 if not text:
@@ -236,6 +259,15 @@ class App:
                     pass
                 if deliver:
                     self.ui.put(lambda: self.overlay.error("Transcription failed. Kept in History.", 3))
+
+    def _recovered_notice(self, text):
+        log.info("recovered take -> %d chars", len(text))
+        if self.tray:
+            try:
+                self.tray.notify("A take that got cut off was recovered and transcribed. "
+                                 "Tray > Copy last transcript.", "Sotto recovered audio")
+            except Exception:
+                pass
 
     @staticmethod
     def _is_gpu_dead(e):
